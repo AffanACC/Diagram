@@ -94,11 +94,18 @@ function Flow() {
     if (root) root.innerHTML = ''
     const tpl = clone.querySelector('template#diagram-source')
     // Swimlane layouts decide positions themselves, so only other diagrams get grid cells.
-    const cells = spec.lanes.length ? new Map() : snapToGrid(getNodes().filter((n) => n.type === 'shape'), spec.diagramType === 'ontology')
+    // Nodes inside a zone get cells in that zone's grid; each zone gets the cell where it starts.
+    const cells = spec.lanes.length
+      ? { nodes: new Map(), zones: new Map() }
+      : snapToGrid(getNodes().filter((n) => n.type === 'shape'), spec.diagramType === 'ontology', spec)
     tpl.content.querySelectorAll('node').forEach((el) => {
-      const c = cells.get(el.getAttribute('id'))
+      const c = cells.nodes.get(el.getAttribute('id'))
       el.removeAttribute('x')
       el.removeAttribute('y')
+      if (c) el.setAttribute('at', `${c.col},${c.row}`)
+    })
+    tpl.content.querySelectorAll('zone').forEach((el, i) => {
+      const c = cells.zones.get(el.getAttribute('id') || `zone-${i + 1}`)
       if (c) el.setAttribute('at', `${c.col},${c.row}`)
     })
     const html = '<!doctype html>\n' + clone.outerHTML

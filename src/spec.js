@@ -25,11 +25,11 @@ const num = (v) => {
 // at="3,2" = column 3, row 2 on the diagram grid (1-based, from the top left). Half steps
 // are allowed: at="2.5,2" sits between columns 2 and 3 (an offset row). "3" alone pins only
 // the column: in swimlanes the lane decides the row, elsewhere the row stays automatic.
-function parseAt(v, id, problems) {
+function parseAt(v, who, problems) {
   if (v === null || v.trim() === '') return undefined
   const m = /^\s*(\d+(?:\.5)?)\s*(?:,\s*(\d+(?:\.5)?)\s*)?$/.exec(v)
   if (!m || Number(m[1]) < 1 || (m[2] !== undefined && Number(m[2]) < 1)) {
-    problems.push(`Node "${id}" has an invalid at="${v}" (use column,row such as at="3,2"; half steps like 2.5 are allowed)`)
+    problems.push(`${who} has an invalid at="${v}" (use column,row such as at="3,2"; half steps like 2.5 are allowed)`)
     return undefined
   }
   return { col: Number(m[1]), row: m[2] === undefined ? undefined : Number(m[2]) }
@@ -52,7 +52,13 @@ function readGroups(root, tag, problems, fallbackLabel) {
     used.add(id)
     idOf.set(el, id)
     const parentEl = el.parentElement ? el.parentElement.closest(tag) : null
-    groups.push({ id, label: el.getAttribute('label') || (el.getAttribute('id') ? id : fallbackLabel(i)), parentEl })
+    groups.push({
+      id,
+      label: el.getAttribute('label') || (el.getAttribute('id') ? id : fallbackLabel(i)),
+      // A zone may carry at="col,row": where its own grid starts (see pinToGrid in layout.js).
+      at: tag === 'zone' ? parseAt(el.getAttribute('at'), `Zone "${id}"`, problems) : undefined,
+      parentEl,
+    })
   })
   groups.forEach((g) => {
     g.parent = g.parentEl ? idOf.get(g.parentEl) : undefined
@@ -130,7 +136,7 @@ export function readSpec() {
       width: num(el.getAttribute('width')),
       height: num(el.getAttribute('height')),
       align: el.getAttribute('align') || undefined,
-      at: parseAt(el.getAttribute('at'), id, problems),
+      at: parseAt(el.getAttribute('at'), `Node "${id}"`, problems),
     })
   })
 
