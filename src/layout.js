@@ -1183,16 +1183,24 @@ export function routeEdges(nodes, edges, dir) {
       // two U's meeting one node end side by side without crossing (the deeper one outside).
       it.dist = it.off !== undefined ? it.off : it.bend ? Math.abs(it.bend[mainAxis] - here[mainAxis]) : 0
     })
-    list.sort((p, q) => p.g - q.g || (p.g < 0 ? p.dist - q.dist : p.g > 0 ? q.dist - p.dist : p.other[along] - q.other[along]))
-    const ai = list.findIndex((it) => it.g === 0)
-    const n = list.length
-    list.forEach((it, k) => {
+    // Connectors that start on the same side of a node leave from ONE point, and connectors that
+    // end on the same side arrive at ONE point: they combine into a single line that splits where
+    // the routes part. So a side has at most two points (one for leaving, one for arriving).
+    const reps = ['source', 'target'].map((r) => list.find((it) => it.role === r)).filter(Boolean)
+    reps.sort((p, q) => p.g - q.g || (p.g < 0 ? p.dist - q.dist : p.g > 0 ? q.dist - p.dist : p.other[along] - q.other[along]))
+    const ai = reps.findIndex((it) => it.g === 0)
+    const n = reps.length
+    const slot = new Map()
+    reps.forEach((it, k) => {
       const pct = ai === -1 || n === 1 ? (k + 1) / (n + 1) : k === ai ? 0.5 : k < ai ? (0.5 * (k + 1)) / (ai + 1) : 0.5 + (0.5 * (k - ai)) / (n - ai)
       const id = `${it.role}-${side}-${k}-of-${n}`
       if (!handles.has(nodeId)) handles.set(nodeId, [])
       handles.get(nodeId).push({ id, role: it.role, side, pct })
-      handleOf.set(`${it.role}|${it.i}`, id)
-      pctOf.set(`${it.role}|${it.i}`, pct)
+      slot.set(it.role, { id, pct })
+    })
+    list.forEach((it) => {
+      handleOf.set(`${it.role}|${it.i}`, slot.get(it.role).id)
+      pctOf.set(`${it.role}|${it.i}`, slot.get(it.role).pct)
     })
   })
 
