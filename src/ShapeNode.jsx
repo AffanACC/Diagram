@@ -1,9 +1,10 @@
 import { Handle, Position } from '@xyflow/react'
 
-// One node component for every shape. Shape = data.kind:
-// start | end | process | decision | data | note
+// One node component for every frame. Frame = data.kind:
+// start | end | card | decision | data | note | plain
+// The node's content is the author's own HTML (headings, paragraphs, images...).
 export default function ShapeNode({ data }) {
-  const { label, sub, kind, w, h, dir } = data
+  const { html, kind, w, h, dir, align } = data
   const tpos = dir === 'TB' ? Position.Top : Position.Left
   const spos = dir === 'TB' ? Position.Bottom : Position.Right
 
@@ -21,8 +22,7 @@ export default function ShapeNode({ data }) {
         </svg>
       )}
       <div className="text">
-        <div className="label">{label}</div>
-        {sub ? <div className="sub">{sub}</div> : null}
+        <div className="content" style={{ textAlign: align }} dangerouslySetInnerHTML={{ __html: html }} />
       </div>
       <Handle type="target" position={tpos} className="handle" />
       <Handle type="source" position={spos} className="handle" />

@@ -1,64 +1,85 @@
 import { graphlib, layout } from '@dagrejs/dagre'
 
-// Default [width, height] per shape kind. A node can override with "width"/"height".
-export const SIZES = {
-  start: [170, 54],
-  end: [170, 54],
-  process: [200, 66],
-  decision: [180, 116],
-  data: [170, 84],
-  note: [200, 66],
-}
-export const KINDS = Object.keys(SIZES)
+const MAX_W = 300
+const MAX_W_PILL = 320
+const DECISION_W = 220
 
-const sizeOf = (n) => {
-  const [w, h] = SIZES[n.type] || SIZES.process
-  return [n.width || w, n.height || h]
-}
+const SAME_AS_MEASURED_ALIGN = { start: 'center', end: 'center', decision: 'center', data: 'center' }
+export const alignFor = (n) => n.align || SAME_AS_MEASURED_ALIGN[n.type] || 'left'
 
-// Turns the JSON spec into React Flow nodes/edges. Positions come from dagre
-// (auto-layout) unless a node supplies its own "position": {x, y}.
-export function buildGraph(spec) {
-  const dir = spec.direction === 'TB' ? 'TB' : 'LR'
-  const rawNodes = Array.isArray(spec.nodes) ? spec.nodes : []
-  const rawEdges = Array.isArray(spec.edges) ? spec.edges : []
-  const ids = new Set(rawNodes.map((n) => n.id))
-  const problems = []
+// Renders every node's real HTML off-screen (same CSS as the final nodes) to learn its
+// size, so dagre can lay out nodes of any content: headings, paragraphs, images...
+export async function measureNodes(nodes) {
+  const host = document.createElement('div')
+  host.setAttribute('aria-hidden', 'true')
+  host.style.cssText = 'position:absolute;left:-99999px;top:0;visibility:hidden;pointer-events:none;'
+  document.body.appendChild(host)
 
-  const edges = rawEdges.filter((e) => {
-    const ok = ids.has(e.from) && ids.has(e.to)
-    if (!ok) problems.push(`Edge ${e.from} -> ${e.to} points at a missing node`)
-    return ok
+  const els = nodes.map((n) => {
+    const el = document.createElement('div')
+    el.className = `shape shape-${n.type}`
+    if (n.type === 'decision') {
+      el.style.width = `${n.width || DECISION_W}px`
+    } else if (n.width) {
+      el.style.width = `${n.width}px`
+    } else {
+      el.style.width = 'max-content'
+      el.style.maxWidth = `${n.type === 'start' || n.type === 'end' ? MAX_W_PILL : MAX_W}px`
+    }
+    el.innerHTML = `<div class="text"><div class="content" style="text-align:${alignFor(n)}">${n.html}</div></div>`
+    host.appendChild(el)
+    return el
   })
 
+  // Wait for images (they are inlined data: URIs, so this is quick).
+  const imgs = [...host.querySelectorAll('img')].filter((i) => !i.complete)
+  await Promise.all(imgs.map((i) => i.decode().catch(() => {})))
+
+  const sizes = new Map()
+  nodes.forEach((n, i) => {
+    const r = els[i].getBoundingClientRect()
+    let w = Math.ceil(r.width)
+    let h = Math.ceil(r.height)
+    if (n.type === 'decision') {
+      // A diamond only fits text in its middle half, so it needs about twice the text height.
+      w = n.width || DECISION_W
+      h = Math.max(n.height || 0, 100, h * 2)
+    } else {
+      if (n.height) h = Math.max(h, n.height)
+    }
+    sizes.set(n.id, [w, h])
+  })
+  host.remove()
+  return sizes
+}
+
+// Spec + measured sizes -> React Flow nodes/edges. Positions come from dagre unless a node
+// has x/y (set by "Download HTML" after you drag things) and useManual is true.
+export function buildGraph(spec, sizes, { useManual = true } = {}) {
   const g = new graphlib.Graph()
-  g.setGraph({ rankdir: dir, nodesep: 56, ranksep: 96, marginx: 24, marginy: 24 })
+  g.setGraph({ rankdir: spec.direction, nodesep: 56, ranksep: 96, marginx: 24, marginy: 24 })
   g.setDefaultEdgeLabel(() => ({}))
-  rawNodes.forEach((n) => {
-    const [width, height] = sizeOf(n)
+  spec.nodes.forEach((n) => {
+    const [width, height] = sizes.get(n.id)
     g.setNode(n.id, { width, height })
   })
-  edges.forEach((e) => g.setEdge(e.from, e.to))
+  spec.edges.forEach((e) => g.setEdge(e.from, e.to))
   layout(g)
 
-  const nodes = rawNodes.map((n) => {
-    const [w, h] = sizeOf(n)
+  const nodes = spec.nodes.map((n) => {
+    const [w, h] = sizes.get(n.id)
     const p = g.node(n.id)
-    const position = n.position || { x: p.x - w / 2, y: p.y - h / 2 }
-    const kind = KINDS.includes(n.type) ? n.type : 'process'
-    if (n.type && !KINDS.includes(n.type)) {
-      problems.push(`Node "${n.id}" has unknown type "${n.type}" (using process)`)
-    }
+    const manual = useManual && n.x !== undefined && n.y !== undefined
     return {
       id: n.id,
       type: 'shape',
-      position,
-      data: { label: n.label ?? n.id, sub: n.sub, kind, w, h, dir },
+      position: manual ? { x: n.x, y: n.y } : { x: p.x - w / 2, y: p.y - h / 2 },
+      data: { html: n.html, kind: n.type, w, h, dir: spec.direction, align: alignFor(n) },
       style: { width: w, height: h },
     }
   })
 
-  const flowEdges = edges.map((e, i) => ({
+  const edges = spec.edges.map((e, i) => ({
     id: `e${i}-${e.from}-${e.to}`,
     source: e.from,
     target: e.to,
@@ -76,5 +97,5 @@ export function buildGraph(spec) {
     labelBgBorderRadius: 6,
   }))
 
-  return { nodes, edges: flowEdges, problems }
+  return { nodes, edges }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -13,31 +13,72 @@ import {
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import ShapeNode from './ShapeNode.jsx'
-import { buildGraph } from './layout.js'
+import { readSpec } from './spec.js'
+import { measureNodes, buildGraph } from './layout.js'
 
 const nodeTypes = { shape: ShapeNode }
 
-// The diagram is a JSON spec embedded in the page by scripts/make.mjs.
-function readSpec() {
-  try {
-    return JSON.parse(document.getElementById('diagram-data').textContent)
-  } catch (err) {
-    console.error('Could not read diagram data', err)
-    return { title: 'Could not read diagram data', nodes: [], edges: [] }
-  }
-}
-
 function Flow() {
   const spec = useMemo(readSpec, [])
-  const graph = useMemo(() => buildGraph(spec), [spec])
-  const [nodes, setNodes, onNodesChange] = useNodesState(graph.nodes)
-  const [edges, , onEdgesChange] = useEdgesState(graph.edges)
-  const { fitView } = useReactFlow()
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [sizes, setSizes] = useState(null)
+  const { fitView, getNodes } = useReactFlow()
+
+  const refit = useCallback(
+    () => requestAnimationFrame(() => requestAnimationFrame(() => fitView({ padding: 0.15, duration: 250 }))),
+    [fitView],
+  )
+
+  // Measure every node's real HTML once, lay them out, then show them.
+  useEffect(() => {
+    let cancelled = false
+    measureNodes(spec.nodes).then((s) => {
+      if (cancelled) return
+      const g = buildGraph(spec, s)
+      setSizes(s)
+      setNodes(g.nodes)
+      setEdges(g.edges)
+      refit()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [spec, setNodes, setEdges, refit])
 
   const resetLayout = useCallback(() => {
-    setNodes(buildGraph(spec).nodes)
-    requestAnimationFrame(() => fitView({ padding: 0.15, duration: 300 }))
-  }, [spec, setNodes, fitView])
+    if (!sizes) return
+    setNodes(buildGraph(spec, sizes, { useManual: false }).nodes)
+    refit()
+  }, [spec, sizes, setNodes, refit])
+
+  // Saves a copy of this same page, with the current node positions written back into the
+  // source (x/y attributes), so a layout you arranged by dragging is kept.
+  const downloadHtml = useCallback(() => {
+    const clone = document.documentElement.cloneNode(true)
+    const root = clone.querySelector('#root')
+    if (root) root.innerHTML = ''
+    const tpl = clone.querySelector('template#diagram-source')
+    const pos = new Map(getNodes().map((n) => [n.id, n.position]))
+    tpl.content.querySelectorAll('node').forEach((el) => {
+      const p = pos.get(el.getAttribute('id'))
+      if (p) {
+        el.setAttribute('x', String(Math.round(p.x)))
+        el.setAttribute('y', String(Math.round(p.y)))
+      }
+    })
+    const html = '<!doctype html>\n' + clone.outerHTML
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const slug = (spec.title || 'diagram').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    a.href = url
+    a.download = `${slug || 'diagram'}.html`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }, [spec, getNodes])
 
   return (
     <ReactFlow
@@ -59,11 +100,11 @@ function Flow() {
       <MiniMap pannable zoomable nodeColor="var(--border)" maskColor="rgba(120,130,145,0.15)" />
       <Panel position="top-left">
         <div className="hud">
-          <h1>{spec.title || 'Diagram'}</h1>
+          <h1>{spec.title}</h1>
           {spec.description ? <p>{spec.description}</p> : null}
-          {graph.problems.length > 0 && (
+          {spec.problems.length > 0 && (
             <div className="warn">
-              {graph.problems.map((p) => (
+              {spec.problems.map((p) => (
                 <div key={p}>⚠ {p}</div>
               ))}
             </div>
@@ -71,9 +112,14 @@ function Flow() {
         </div>
       </Panel>
       <Panel position="top-right">
-        <button className="btn" onClick={resetLayout}>
-          Reset layout
-        </button>
+        <div className="toolbar">
+          <button className="btn" onClick={resetLayout} title="Go back to the automatic layout">
+            Reset layout
+          </button>
+          <button className="btn primary" onClick={downloadHtml} title="Save this diagram as an HTML file, keeping your current layout">
+            Download HTML
+          </button>
+        </div>
       </Panel>
     </ReactFlow>
   )
