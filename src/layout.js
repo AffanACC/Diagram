@@ -80,7 +80,7 @@ function gapsOf(sizes, roomy) {
   const all = [...sizes.values()]
   return {
     // Never tighter than connectors need to fan out and bend between neighbours.
-    gx: roomy ? 150 : clamp(median(all.map((s) => s[0])) * 0.3, 56, 72),
+    gx: roomy ? 150 : clamp(median(all.map((s) => s[0])) * 0.4, 80, 96),
     gy: roomy ? 110 : clamp(median(all.map((s) => s[1])) * 0.6, 32, 56),
   }
 }
@@ -810,7 +810,7 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
   const mainMed = med(flowSizes.map((s) => s[LR ? 0 : 1]))
   const clamp = (v, lo, hi) => Math.round(Math.min(hi, Math.max(lo, v)))
   const nodesep = allNet ? 96 : clamp(crossMed * 0.6, 32, 64)
-  const ranksep = allNet ? 128 : clamp(mainMed * 0.4, 64, 88)
+  const ranksep = allNet ? 128 : clamp(mainMed * 0.4, 80, 96)
   const extraMain = allNet ? 0 : 128 - ranksep
   const extraCross = allNet ? 0 : 96 - nodesep
   g.setGraph({ rankdir: spec.direction, nodesep, ranksep, edgesep: 24, marginx: 24, marginy: 24 })
