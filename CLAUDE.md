@@ -12,7 +12,7 @@ Source: `.claude\skills\` in this repo; installed to `%USERPROFILE%\.claude\skil
 - `diagram-standards`: flowchart (ISO 5807), process flow (BPMN swimlane), data flow (Gane-Sarson) rules and checklists
 - `diagram-styling`: slate tokens, what colours mean, content rules, how to change the theme
 - `prototype-spec`: the paste-anywhere spec
-Examples: `diagrams\example-flowchart.html`, `example-process-flow.html`, `example-dfd.html`, `sample.html`.
+No example diagrams are kept in the repo: the user's own diagrams live in `diagrams\` (git-ignored). The skills' snippets and `reference\types.md` are the reference.
 
 ## Working on the viewer itself (only when asked)
 Source is `src\`: `spec.js` (reads the HTML source), `shapes.js` (node types and their markup),
@@ -21,8 +21,10 @@ routing), `ShapeNode.jsx`, `LaneNode.jsx`, `ZoneNode.jsx`, `RoutedEdge.jsx`, `Fl
 `style.css` (tokens at the top). After editing: `pnpm run build:viewer` (rewrites the committed
 `template\index.html`), then `pnpm run make`. A change to node types or attributes must be
 reflected in the `diagram-format` skill and `reference\types.md`.
-Check layout changes on all four examples for connector crossings and connectors passing
-through nodes; the routing code is built to give none.
+After layout changes, test with throwaway diagrams (name them `zz-...` and delete them
+afterwards) covering a flowchart, a swimlane, a DFD with a zone and an ontology, and check for
+connector crossings and connectors passing through nodes; the routing code is built to give none.
+Never touch the user's own files in `diagrams\`.
 
 ## Server and tooling (Windows)
 - `http://localhost:47831` is served by the scheduled task `DiagramServer` (per user, hidden, starts at sign-in, restarts on failure) running `scripts\serve.mjs`: read-only, 127.0.0.1 only, with a Content-Security-Policy that blocks any external request. New or changed diagrams show up after `make`; no restart needed. After changing `serve.mjs`: `Stop-ScheduledTask DiagramServer; Start-ScheduledTask DiagramServer`. Install/remove: `scripts\install-autostart.ps1` / `uninstall-autostart.ps1`.
@@ -30,4 +32,4 @@ through nodes; the routing code is built to give none.
 - Page output opens by double-click too (the dropdown then uses saved file paths instead of the server list).
 
 ## Git
-The repo is the tool, not the user's work. `diagrams\`, `out\` and `specs\` are git-ignored except the examples, because they may hold client information: never force-add them. Commits use this repo's own git identity (`git config user.name` / `user.email`); do not reintroduce a placeholder. The remote `origin` is on GitHub: push only when the user asks.
+The repo is the tool, not the user's work. `diagrams\`, `out\` and `specs\` are entirely git-ignored (`diagrams\` was also purged from history), because they may hold client information: never force-add anything from them. Commits use this repo's own git identity (`git config user.name` / `user.email`); do not reintroduce a placeholder. The remote `origin` is on GitHub: push only when the user asks.

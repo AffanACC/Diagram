@@ -14,8 +14,8 @@ zoomable page. The user only views and shares. You do all the editing.
 - Generated page: `...\out\<name>.html`, shown at `http://localhost:47831/<name>.html`
 - Generate: `& "C:\Program Files\nodejs\node.exe" "C:\Users\affan.hamid\Tools\diagram\scripts\make.mjs" "C:\Users\affan.hamid\Tools\diagram\diagrams\<name>.html"`
 - Always-on server: scheduled task `DiagramServer`. If the URL does not load, run `Start-ScheduledTask -TaskName DiagramServer`.
-- Working examples to copy from: `diagrams\example-flowchart.html`, `example-process-flow.html`, `example-dfd.html`.
-- Client information stays on this laptop: never add CDN links, web fonts, scripts or external URLs (make refuses them). Do not publish diagrams as Artifacts. Only commit or push when asked; `diagrams/` and `specs/` are git-ignored except the examples.
+- No example files are kept. The snippets in this skill and `reference\types.md` are the reference. The user's earlier diagrams in `diagrams\` can be read for style but are their work: never copy their content elsewhere.
+- Client information stays on this laptop: never add CDN links, web fonts, scripts or external URLs (make refuses them). Do not publish diagrams as Artifacts. Only commit or push when asked; `diagrams/`, `out/` and `specs/` are git-ignored; never force-add them.
 
 ## Your job is only: type + content
 The viewer decides size, padding, spacing, alignment, colour, layout and routing. Same-type

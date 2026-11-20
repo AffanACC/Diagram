@@ -69,6 +69,7 @@ function inlineImages(markup, baseDir, warnings) {
   })
 }
 
+fs.mkdirSync(diagramsDir, { recursive: true }) // git ignores diagrams/, so a fresh clone has none
 const args = process.argv.slice(2)
 const files = args.length
   ? args.map((a) => path.resolve(a))

@@ -62,7 +62,7 @@ export function saveFiles(list) {
 export function addFile(list, input) {
   const path = normalisePath(input)
   if (!path) {
-    return { error: 'Not a full Windows path. Example: C:\\Users\\you\\Tools\\diagram\\out\\sample.html' }
+    return { error: 'Not a full Windows path. Example: C:\\Users\\you\\Tools\\diagram\\out\\my-diagram.html' }
   }
   if (!/\.html?$/i.test(path)) return { error: 'The path should end in .html' }
   if (list.some((f) => sameFile(f.path, path))) return { error: 'That file is already in the list' }

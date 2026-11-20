@@ -9,10 +9,10 @@ no external requests.
 pnpm install              # once
 pnpm run build:viewer     # once, or after changing src/ (writes template/index.html)
 pnpm run make             # all diagrams/*.html -> out/*.html
-node scripts/make.mjs diagrams/sample.html   # just one
+node scripts/make.mjs diagrams/my-diagram.html   # just one
 ```
 
-Open `out/sample.html` by double-clicking it, or browse everything at
+Open a generated `out/<name>.html` by double-clicking it, or browse everything at
 **http://localhost:47831** (a small read-only server that starts at sign-in; see below).
 See `CLAUDE.md` for the source format.
 
@@ -32,7 +32,7 @@ It runs while you are signed in and the laptop is awake.
 
 The dropdown at the top left switches between diagrams: it remembers file paths only (in the
 browser, never the diagram content) and opens a file when you click it. **Add existing file…**
-adds a path (e.g. `C:\Users\you\Tools\diagram\out\sample.html`; "Copy as path" in Explorer
+adds a path (e.g. `C:\Users\you\Tools\diagram\out\my-diagram.html`; "Copy as path" in Explorer
 works). **+ New file** starts a blank diagram: press **Download HTML** to save it as a file you
 can open any time, then ask Claude to fill it in.
 
