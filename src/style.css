@@ -1,0 +1,189 @@
+:root {
+  --bg: #f4f6f9;
+  --card: #ffffff;
+  --border: #c5cfdb;
+  --text: #1b2430;
+  --muted: #5b6776;
+  --edge: #738094;
+  --accent: #1f6f8b;
+  --accent-bg: #e1f0f5;
+  --warn: #cf9b2a;
+  --warn-bg: #fcf1d6;
+  --data: #5a78c2;
+  --data-bg: #e6edfa;
+  --shadow: 0 1px 2px rgba(20, 30, 45, 0.08), 0 4px 10px rgba(20, 30, 45, 0.06);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11151b;
+    --card: #1b222b;
+    --border: #3a4553;
+    --text: #e6ebf1;
+    --muted: #9aa6b4;
+    --edge: #8894a6;
+    --accent: #5cb8d6;
+    --accent-bg: #163039;
+    --warn: #c79a2e;
+    --warn-bg: #362d14;
+    --data: #6f8fe0;
+    --data-bg: #1a2640;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.35);
+    color-scheme: dark;
+  }
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* ---- shapes ---- */
+.shape {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  cursor: grab;
+}
+.shape:active {
+  cursor: grabbing;
+}
+.shape .text {
+  position: relative;
+  z-index: 1;
+  padding: 6px 14px;
+  max-width: 100%;
+}
+.shape .label {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.shape .sub {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+.shape .bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.shape .bg * {
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5px;
+  stroke-linejoin: round;
+}
+
+.shape-start,
+.shape-end {
+  border-radius: 999px;
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+.shape-start .label,
+.shape-end .label {
+  color: var(--accent);
+}
+
+.shape-decision,
+.shape-data {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.shape-decision .bg polygon {
+  fill: var(--warn-bg);
+  stroke: var(--warn);
+}
+.shape-decision .text {
+  padding: 6px 30px;
+}
+.shape-data .bg path {
+  fill: var(--data-bg);
+  stroke: var(--data);
+}
+.shape-data .text {
+  padding-top: 18px;
+}
+
+.shape-note {
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  box-shadow: none;
+}
+.shape-note .label {
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.handle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- React Flow tweaks ---- */
+.react-flow__arrowhead polyline {
+  stroke: var(--edge) !important;
+  fill: var(--edge) !important;
+}
+.react-flow__node.selected .shape {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ---- header panel ---- */
+.hud {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 10px 14px;
+  max-width: 420px;
+}
+.hud h1 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+}
+.hud p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.hud .warn {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--warn);
+}
+.btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

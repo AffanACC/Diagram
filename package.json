@@ -1,0 +1,21 @@
+{
+  "name": "diagram",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build:viewer": "vite build",
+    "make": "node scripts/make.mjs"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^3.1.3",
+    "@xyflow/react": "^13.0.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.3.0",
+    "vite": "^8.3.8",
+    "vite-plugin-singlefile": "^2.3.4"
+  }
+}
