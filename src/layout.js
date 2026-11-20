@@ -83,11 +83,15 @@ export function gridSize(sizes, roomy = false) {
 
 // Grid placement. at="col,row" puts a node in that cell; at="col" pins only the column.
 // A node inside a <zone> uses that zone's own grid: cell 1,1 is the zone's top-left cell, so a
-// zone's contents can be arranged without caring where the zone sits on the page. A zone can
-// itself carry at="col,row": the cell, in its parent zone's grid (or the page's), where its own
-// grid starts, which places the whole group. Without it the zone stays where the automatic
-// layout put it. `sizes` are the real node sizes (they set the cell size); `lsz` are the sizes
-// used for spacing.
+// zone's contents can be arranged without caring where the zone sits on the page.
+// A zone's own at="col,row" is RELATIVE to its sibling zones (the ones with the same parent, or
+// all top-level zones): the numbers only give the order. Zones in the same column sit one
+// below the other, zones in the same row side by side, and every column and row is as big as
+// the biggest zone in it, so zones never overlap however tall they are. Half steps and gaps in
+// the numbers do not matter; only the order does. Zones without an at stay where the automatic
+// layout put them. `sizes` are the real node sizes (they set the cell size); `lsz` are the
+// sizes used for spacing.
+
 // Cell size for ontology (circles, roomier) and for ordinary flow nodes, each from its own nodes.
 function gridsFor(spec, sizes) {
   const of = (net) => {
@@ -98,13 +102,29 @@ function gridsFor(spec, sizes) {
   const pageNet = spec.diagramType === 'ontology'
   const zoneNet = new Map(spec.zones.map((z) => [z.id, z.net]))
   // The grid a zone's own cells use (zone = null: the page's).
-  return (zone) => (zone ? zoneNet.get(zone) : pageNet) ? grids.net : grids.flow
+  return (zone) => ((zone ? zoneNet.get(zone) : pageNet) ? grids.net : grids.flow)
 }
+
+// Sibling zones that carry an at, grouped by parent zone ('' = top level), deepest parents first
+// (so a zone is moved as a whole only after the zones inside it have been placed).
+function placedZoneGroups(spec, live, zt) {
+  const groups = new Map()
+  spec.zones
+    .filter((z) => z.at && z.at.col && live.has(z.id))
+    .forEach((z) => {
+      const k = z.parent && live.has(z.parent) ? z.parent : ''
+      if (!groups.has(k)) groups.set(k, [])
+      groups.get(k).push(z)
+    })
+  return [...groups.entries()].sort((a, b) => (b[0] ? zt.depth(b[0]) : 0) - (a[0] ? zt.depth(a[0]) : 0))
+}
+
+const ZONE_GAP = 40
 
 function pinToGrid(spec, sizes, lsz, pos) {
   const pinnedNodes = spec.nodes.filter((n) => n.at && n.at.col)
-  const placedZones = spec.zones.filter((z) => z.at && z.at.col)
-  if (pinnedNodes.length === 0 && placedZones.length === 0) return
+  const hasZoneAt = spec.zones.some((z) => z.at && z.at.col)
+  if (pinnedNodes.length === 0 && !hasZoneAt) return
   const gridOf = gridsFor(spec, sizes)
   const page = gridOf(null)
   const zt = zoneTree(spec)
@@ -113,35 +133,65 @@ function pinToGrid(spec, sizes, lsz, pos) {
   const left = (id) => pos.get(id).x - sizes.get(id)[0] / 2
   const top = (id) => pos.get(id).y - sizes.get(id)[1] / 2
 
-  // 1. Where each zone's grid starts (the top-left corner of its cell 1,1). A zone with an `at`
-  //    is moved there as a whole; the others stay where the automatic layout put them.
+  // 1. Where each zone's own grid starts (the top-left corner of its cell 1,1).
   const origin = new Map()
   spec.zones.forEach((z) => {
     if (!live.has(z.id)) return
     const ids = zt.members(z.id)
-    const cur = { x: Math.min(...ids.map(left)), y: Math.min(...ids.map(top)) }
-    if (z.at && z.at.col) {
-      const base = z.parent && origin.get(z.parent) ? origin.get(z.parent) : PAGE
-      const { colW, rowH } = gridOf(z.parent && origin.get(z.parent) ? z.parent : null)
-      const target = { x: base.x + (z.at.col - 1) * colW, y: z.at.row ? base.y + (z.at.row - 1) * rowH : cur.y }
-      ids.forEach((id) => {
-        pos.get(id).x += target.x - cur.x
-        pos.get(id).y += target.y - cur.y
-      })
-      origin.set(z.id, target)
-    } else origin.set(z.id, cur)
+    origin.set(z.id, { x: Math.min(...ids.map(left)), y: Math.min(...ids.map(top)) })
   })
 
   // 2. Nodes with an `at`: the cell is in the grid of the zone the node is in (else the page's).
   pinnedNodes.forEach((n) => {
-    const base = n.zone && origin.get(n.zone) ? origin.get(n.zone) : PAGE
-    const { colW, rowH } = gridOf(n.zone && origin.get(n.zone) ? n.zone : null)
+    const inZone = n.zone && origin.get(n.zone)
+    const base = inZone ? origin.get(n.zone) : PAGE
+    const { colW, rowH } = gridOf(inZone ? n.zone : null)
     const p = pos.get(n.id)
     p.x = base.x + (n.at.col - 0.5) * colW
     if (n.at.row) p.y = base.y + (n.at.row - 0.5) * rowH
   })
 
-  // 3. Everything else that ended up on top of a pinned node slides clear.
+  // 3. Zones with an `at`: sibling zones are laid out as a grid of their own, by order.
+  const box = (z) => {
+    const ids = zt.members(z.id)
+    const pad = ZONE_PAD * zt.height(z.id)
+    return [
+      Math.min(...ids.map(left)) - pad,
+      Math.min(...ids.map(top)) - pad,
+      Math.max(...ids.map((id) => left(id) + sizes.get(id)[0])) + pad,
+      Math.max(...ids.map((id) => top(id) + sizes.get(id)[1])) + pad,
+    ]
+  }
+  placedZoneGroups(spec, live, zt).forEach(([, zs]) => {
+    const boxes = new Map(zs.map((z) => [z.id, box(z)]))
+    const rowKey = (z) => z.at.row || 1
+    const cols = [...new Set(zs.map((z) => z.at.col))].sort((a, b) => a - b)
+    const rows = [...new Set(zs.map(rowKey))].sort((a, b) => a - b)
+    const w = new Map()
+    const h = new Map()
+    zs.forEach((z) => {
+      const b = boxes.get(z.id)
+      w.set(z.at.col, Math.max(w.get(z.at.col) || 0, b[2] - b[0]))
+      h.set(rowKey(z), Math.max(h.get(rowKey(z)) || 0, b[3] - b[1]))
+    })
+    const xOf = new Map()
+    const yOf = new Map()
+    let x = Math.min(...[...boxes.values()].map((b) => b[0]))
+    let y = Math.min(...[...boxes.values()].map((b) => b[1]))
+    cols.forEach((c) => (xOf.set(c, x), (x += w.get(c) + ZONE_GAP)))
+    rows.forEach((r) => (yOf.set(r, y), (y += h.get(r) + ZONE_GAP)))
+    zs.forEach((z) => {
+      const b = boxes.get(z.id)
+      const dx = xOf.get(z.at.col) - b[0]
+      const dy = yOf.get(rowKey(z)) - b[1]
+      zt.members(z.id).forEach((id) => {
+        pos.get(id).x += dx
+        pos.get(id).y += dy
+      })
+    })
+  })
+
+  // 4. Everything else that ended up on top of a pinned node slides clear.
   const pinnedIds = new Set(pinnedNodes.filter((n) => n.at.row).map((n) => n.id))
   const cross = spec.direction === 'TB' ? 'x' : 'y'
   const overlaps = (id) =>
@@ -166,10 +216,11 @@ function pinToGrid(spec, sizes, lsz, pos) {
 }
 
 // For "Download HTML": turns dragged positions into grid cells, so the saved file says
-// at="3,2" or at="2.5,2" and not pixels. Nodes inside a zone get cells in that zone's grid, and
-// every zone gets the cell where its grid starts, so the layout reloads where it was. Each node
-// takes the nearest free half-step cell in its own grid (a cell is taken when another node in
-// the same grid is less than one cell away in both directions).
+// at="3,2" or at="2.5,2" and not pixels. Nodes inside a zone get cells in that zone's own grid
+// (cell 1,1 = its top-left node), the others in the page grid. Each node takes the nearest free
+// half-step cell in its own grid (a cell is taken when another node in the same grid is less
+// than one cell away in both directions). Zones get their order among sibling zones: zones that
+// overlap in height share a row, zones that overlap in width share a column.
 // Returns { nodes: Map id -> {col,row}, zones: Map zoneId -> {col,row} }.
 export function snapToGrid(shapeNodes, spec = { zones: [], nodes: [] }) {
   const sizes = new Map(shapeNodes.map((n) => [n.id, [n.data.w, n.data.h]]))
@@ -182,24 +233,21 @@ export function snapToGrid(shapeNodes, spec = { zones: [], nodes: [] }) {
   const live = spec.zones.filter((z) => zt.members(z.id).some((id) => byId.has(id)))
   const liveIds = new Set(live.map((z) => z.id))
   const PAGE = { x: -page.colW / 2, y: -page.rowH / 2 }
-  const centre = (id) => {
+  const rect = (id) => {
     const n = byId.get(id)
-    return { x: n.position.x + n.data.w / 2, y: n.position.y + n.data.h / 2 }
+    return [n.position.x, n.position.y, n.position.x + n.data.w, n.position.y + n.data.h]
+  }
+  const centre = (id) => {
+    const r = rect(id)
+    return { x: (r[0] + r[2]) / 2, y: (r[1] + r[3]) / 2 }
   }
 
   // Each zone's grid starts half a cell before its top-left node centre, so that node is cell 1.
   const origin = new Map()
-  const zoneCell = new Map()
   live.forEach((z) => {
     const cs = zt.members(z.id).filter((id) => byId.has(id)).map(centre)
     const own = gridOf(z.id)
-    const cur = { x: Math.min(...cs.map((c) => c.x)) - own.colW / 2, y: Math.min(...cs.map((c) => c.y)) - own.rowH / 2 }
-    const base = z.parent && origin.get(z.parent) ? origin.get(z.parent) : PAGE
-    const { colW, rowH } = gridOf(z.parent && origin.get(z.parent) ? z.parent : null)
-    const col = half((cur.x - base.x) / colW) + 1
-    const row = half((cur.y - base.y) / rowH) + 1
-    zoneCell.set(z.id, { col, row })
-    origin.set(z.id, { x: base.x + (col - 1) * colW, y: base.y + (row - 1) * rowH })
+    origin.set(z.id, { x: Math.min(...cs.map((c) => c.x)) - own.colW / 2, y: Math.min(...cs.map((c) => c.y)) - own.rowH / 2 })
   })
 
   const placed = new Map()
@@ -226,16 +274,45 @@ export function snapToGrid(shapeNodes, spec = { zones: [], nodes: [] }) {
 
   // The page's own grid has no fixed origin, so shift it until its smallest cell is 1.
   const pageNodes = shapeNodes.filter((n) => !(zoneOf.get(n.id) && liveIds.has(zoneOf.get(n.id)))).map((n) => cells.get(n.id))
-  const topZones = live.filter((z) => !z.parent || !liveIds.has(z.parent)).map((z) => zoneCell.get(z.id))
-  const all = [...pageNodes, ...topZones]
-  if (all.length) {
-    const dCol = Math.min(...all.map((c) => c.col)) - 1
-    const dRow = Math.min(...all.map((c) => c.row)) - 1
-    all.forEach((c) => {
+  if (pageNodes.length) {
+    const dCol = Math.min(...pageNodes.map((c) => c.col)) - 1
+    const dRow = Math.min(...pageNodes.map((c) => c.row)) - 1
+    pageNodes.forEach((c) => {
       c.col -= dCol
       c.row -= dRow
     })
   }
+
+  // Zones: order among siblings. A column is a run of zones whose widths overlap (sorted by left
+  // edge); a row is a run whose heights overlap.
+  const zoneCell = new Map()
+  const groups = new Map()
+  live.forEach((z) => {
+    const k = z.parent && liveIds.has(z.parent) ? z.parent : ''
+    if (!groups.has(k)) groups.set(k, [])
+    groups.get(k).push(z)
+  })
+  const boxOf = (z) => {
+    const rs = zt.members(z.id).filter((id) => byId.has(id)).map(rect)
+    return [Math.min(...rs.map((r) => r[0])), Math.min(...rs.map((r) => r[1])), Math.max(...rs.map((r) => r[2])), Math.max(...rs.map((r) => r[3]))]
+  }
+  const runs = (zs, lo, hi) => {
+    const out = new Map()
+    let idx = 0
+    let reach = -Infinity
+    ;[...zs].sort((a, b) => boxOf(a)[lo] - boxOf(b)[lo]).forEach((z) => {
+      const b = boxOf(z)
+      if (b[lo] >= reach) idx++
+      reach = Math.max(reach, b[hi])
+      out.set(z.id, idx)
+    })
+    return out
+  }
+  groups.forEach((zs) => {
+    const cols = runs(zs, 0, 2)
+    const rows = runs(zs, 1, 3)
+    zs.forEach((z) => zoneCell.set(z.id, { col: cols.get(z.id), row: rows.get(z.id) }))
+  })
   return { nodes: cells, zones: zoneCell }
 }
 
@@ -627,8 +704,21 @@ function laneLayout(spec, sizes, pos, useManual) {
 // the lane layout always decides positions.
 export function buildGraph(spec, sizes, { useManual = true } = {}) {
   const g = new graphlib.Graph({ compound: true })
-  const net = spec.nodes.some((n) => n.net) // circles + straight links need more room
-  g.setGraph({ rankdir: spec.direction, nodesep: net ? 96 : 64, ranksep: net ? 128 : 88, edgesep: 24, marginx: 24, marginy: 24 })
+  const allNet = spec.nodes.length > 0 && spec.nodes.every((n) => n.net)
+  // Spacing follows the node size: small nodes sit closer together, big ones get more room.
+  // Ontology circles and their straight links need more room (fixed 96 / 128): in a mixed
+  // diagram their nodes are laid out slightly larger, so only they get the extra space.
+  const med = (v) => (v.length ? [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)] : 0)
+  const flowSizes = spec.nodes.filter((n) => !n.net).map((n) => sizes.get(n.id))
+  const LR = spec.direction !== 'TB'
+  const crossMed = med(flowSizes.map((s) => s[LR ? 1 : 0]))
+  const mainMed = med(flowSizes.map((s) => s[LR ? 0 : 1]))
+  const clamp = (v, lo, hi) => Math.round(Math.min(hi, Math.max(lo, v)))
+  const nodesep = allNet ? 96 : clamp(crossMed * 0.5, 24, 64)
+  const ranksep = allNet ? 128 : clamp(mainMed * 0.3, 40, 88)
+  const extraMain = allNet ? 0 : 128 - ranksep
+  const extraCross = allNet ? 0 : 96 - nodesep
+  g.setGraph({ rankdir: spec.direction, nodesep, ranksep, edgesep: 24, marginx: 24, marginy: 24 })
   g.setDefaultEdgeLabel(() => ({}))
   // Zone members are laid out as if larger by the zone padding (once per nesting level), so
   // the boxes drawn later never land on a neighbour. Zones are compound parents, which keeps
@@ -640,7 +730,9 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
     spec.nodes.map((n) => {
       const [w, h] = sizes.get(n.id)
       const k = inZone(n) ? 2 * ZONE_PAD * zt.depth(n.zone) : 0
-      return [n.id, [w + k, h + k]]
+      const ex = n.net ? (LR ? extraMain : extraCross) : 0
+      const ey = n.net ? (LR ? extraCross : extraMain) : 0
+      return [n.id, [w + k + ex, h + k + ey]]
     }),
   )
   spec.zones.forEach((z) => {
