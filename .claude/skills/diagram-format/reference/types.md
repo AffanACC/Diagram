@@ -36,6 +36,15 @@ Pools and lanes: `pool="..."` on `<diagram>` and `<lane>` elements (see SKILL.md
 | `entity` | none | Bold boxed external entity |
 Every DFD edge needs a `label` naming the data.
 
+## Ontology (`<diagram type="ontology">`)
+| type | Use for |
+|---|---|
+| `concept` | A circle with a bold label (default type in an ontology). Put a short example or identifier on a second line with `<small>`. All circles are drawn one size. |
+Links are `<edge>` with a `label`; they are straight lines from circle edge to circle edge (curved only to get round another circle) and read source to target. `both` adds an arrowhead at each end. Nodes can be placed on the grid with `at`, including half steps.
+
+## Tones (colour, any node type)
+`tone="grey|blue|green|orange|purple|red"`. A fixed palette; nothing else is accepted (an unknown tone shows a warning and is ignored).
+
 ## General
 | type | Use for |
 |---|---|

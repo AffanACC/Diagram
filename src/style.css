@@ -436,6 +436,84 @@ body,
   font-weight: 700;
 }
 
+/* ontology: a plain circle. Tones colour categories (Tailwind palette, MIT: sky, emerald,
+   orange, violet, rose, slate; 50 for the fill, 600 for the line). */
+.shape-concept {
+  border-radius: 50%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--t-bg, var(--card));
+  border-color: var(--t-line, var(--edge));
+}
+.shape-concept .text {
+  padding: 10px 12px;
+}
+.shape-concept .content {
+  font-weight: 650;
+}
+.tone-grey {
+  --t-bg: #f1f5f9;
+  --t-line: #64748b;
+}
+.tone-blue {
+  --t-bg: #f0f9ff;
+  --t-line: #0284c7;
+}
+.tone-green {
+  --t-bg: #ecfdf5;
+  --t-line: #059669;
+}
+.tone-orange {
+  --t-bg: #fff7ed;
+  --t-line: #ea580c;
+}
+.tone-purple {
+  --t-bg: #f5f3ff;
+  --t-line: #7c3aed;
+}
+.tone-red {
+  --t-bg: #fff1f2;
+  --t-line: #e11d48;
+}
+/* A tone recolours whichever way the shape is drawn: framed boxes, stretched outlines, symbols. */
+.shape-card[class*='tone-'],
+.shape-entity[class*='tone-'],
+.shape-note[class*='tone-'],
+.shape-subprocess[class*='tone-'],
+.shape-start[class*='tone-'],
+.shape-end[class*='tone-'],
+.shape-dfd-process[class*='tone-'],
+.shape-datastore[class*='tone-'] {
+  background-color: var(--t-bg);
+  border-color: var(--t-line);
+}
+.shape-start[class*='tone-'] .content,
+.shape-end[class*='tone-'] .content {
+  color: var(--t-line);
+}
+.shape[class*='tone-'] .bg * {
+  fill: var(--t-bg);
+  stroke: var(--t-line);
+}
+.shape-event[class*='tone-'] .glyph {
+  background: var(--t-bg);
+  border-color: var(--t-line);
+}
+.shape-event[class*='tone-'] .glyph-intermediate {
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 4.5px var(--t-line);
+}
+.shape-gateway[class*='tone-'] .glyph-svg polygon {
+  fill: var(--t-bg);
+  stroke: var(--t-line);
+}
+.shape-gateway[class*='tone-'] .glyph-svg .sym {
+  stroke: var(--t-line);
+}
+.shape-dataobject[class*='tone-'] .glyph-svg path {
+  fill: var(--t-bg);
+  stroke: var(--t-line);
+}
+
 /* assumed: drawn from an assumption, not something the user said */
 .shape.assumed {
   border-style: dashed;

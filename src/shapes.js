@@ -8,6 +8,7 @@
 //   process flow (BPMN):   event (kind=start|intermediate|end), gateway (kind=xor|and|or),
 //                          card (task), subprocess, dataobject
 //   data flow (DFD):       dfd-process (num=), datastore (num=), entity
+//   ontology:              concept (a circle; the default type in <diagram type="ontology">)
 //   general:               note, plain
 // Aliases: process, task -> card; terminator -> start.
 
@@ -17,7 +18,10 @@ export const TYPES = [
   'io', 'document', 'subprocess', 'manual', 'prep', 'connector', 'offpage',
   'event', 'gateway', 'dataobject',
   'dfd-process', 'datastore', 'entity',
+  'concept',
 ]
+// Colour tones tell categories apart (ontology circles, cards). Meaning is up to the diagram.
+export const TONES = ['grey', 'blue', 'green', 'orange', 'purple', 'red']
 export const EVENT_KINDS = ['start', 'intermediate', 'end']
 export const GATEWAY_KINDS = ['xor', 'and', 'or']
 

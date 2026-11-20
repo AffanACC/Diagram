@@ -14,7 +14,7 @@
 // The older attribute form also works: <lane id=".." label=".."></lane> then lane=".." on nodes,
 // and zone=".." on nodes. Types and their attributes are listed at the top of shapes.js.
 
-import { ALIASES, TYPES, EVENT_KINDS, GATEWAY_KINDS } from './shapes.js'
+import { ALIASES, TYPES, TONES, EVENT_KINDS, GATEWAY_KINDS } from './shapes.js'
 
 const num = (v) => {
   if (v === null || v === '') return undefined
@@ -22,13 +22,14 @@ const num = (v) => {
   return Number.isFinite(n) ? n : undefined
 }
 
-// at="3,2" = column 3, row 2 on the diagram grid (1-based, from the top left). "3" alone
-// sets only the column (used with swimlanes, where the lane decides the row).
+// at="3,2" = column 3, row 2 on the diagram grid (1-based, from the top left). Half steps
+// are allowed: at="2.5,2" sits between columns 2 and 3 (an offset row). "3" alone sets only
+// the column (used with swimlanes, where the lane decides the row).
 function parseAt(v, id, problems) {
   if (v === null || v.trim() === '') return undefined
-  const m = /^\s*(\d+)\s*(?:,\s*(\d+)\s*)?$/.exec(v)
+  const m = /^\s*(\d+(?:\.5)?)\s*(?:,\s*(\d+(?:\.5)?)\s*)?$/.exec(v)
   if (!m || Number(m[1]) < 1 || (m[2] !== undefined && Number(m[2]) < 1)) {
-    problems.push(`Node "${id}" has an invalid at="${v}" (use column,row such as at="3,2")`)
+    problems.push(`Node "${id}" has an invalid at="${v}" (use column,row such as at="3,2"; half steps like 2.5 are allowed)`)
     return undefined
   }
   return { col: Number(m[1]), row: m[2] === undefined ? undefined : Number(m[2]) }
@@ -68,6 +69,8 @@ export function readSpec() {
     return { title: 'No diagram found', nodes: [], edges: [], lanes: [], zones: [], problems: ['No <diagram> element found'] }
   }
   const direction = root.getAttribute('direction') === 'TB' ? 'TB' : 'LR'
+  // <diagram type="ontology">: circles joined by labelled links (straight, not right-angled).
+  const diagramType = root.getAttribute('type') === 'ontology' ? 'ontology' : ''
 
   const { groups: lanes, idOf: laneIdOf } = readGroups(root, 'lane', problems, (i) => `Lane ${i + 1}`)
   if (lanes.length && direction === 'TB') problems.push('Lanes need direction="LR"; they were ignored')
@@ -81,7 +84,7 @@ export function readSpec() {
     if (seen.has(id)) return problems.push(`Duplicate node id "${id}" was skipped`)
     seen.add(id)
 
-    const rawType = el.getAttribute('type') || 'card'
+    const rawType = el.getAttribute('type') || (diagramType === 'ontology' ? 'concept' : 'card')
     let type = ALIASES[rawType] || rawType
     if (!TYPES.includes(type)) {
       problems.push(`Node "${id}" has unknown type "${rawType}" (using card)`)
@@ -109,8 +112,14 @@ export function readSpec() {
     const zone = (zoneEl && zoneIdOf.get(zoneEl)) || el.getAttribute('zone') || undefined
     if (zone && !zones.some((z) => z.id === zone)) problems.push(`Node "${id}" is in unknown zone "${zone}"`)
 
+    let tone = el.getAttribute('tone') || undefined
+    if (tone && !TONES.includes(tone)) {
+      problems.push(`Node "${id}" has unknown tone "${tone}" (use ${TONES.join(', ')})`)
+      tone = undefined
+    }
     nodes.push({
       id,
+      tone,
       type,
       kind,
       num: el.getAttribute('num') || '',
@@ -138,6 +147,7 @@ export function readSpec() {
       label: el.getAttribute('label') || undefined,
       dashed: flag(el, 'dashed'),
       assumed: flag(el, 'assumed'),
+      both: flag(el, 'both'),
     })
   })
 
@@ -146,6 +156,7 @@ export function readSpec() {
     description: root.getAttribute('description') || '',
     pool: root.getAttribute('pool') || '',
     skeleton: flag(root, 'skeleton'),
+    diagramType,
     direction,
     lanes: direction === 'LR' ? lanes : [],
     zones,

@@ -7,7 +7,7 @@ const MAX_W_OUTSIDE = 150
 const DECISION_W = 220
 const CONNECTOR = 38
 
-const classOf = (n) => `shape shape-${n.type}${n.assumed ? ' assumed' : ''}`
+const classOf = (n) => `shape shape-${n.type}${n.assumed ? ' assumed' : ''}${n.tone ? ` tone-${n.tone}` : ''}`
 
 // Renders every node's real markup off-screen (same CSS as the final nodes) to learn its
 // size, so dagre can lay out nodes of any content: headings, paragraphs, images...
@@ -29,7 +29,7 @@ export async function measureNodes(nodes) {
       el.style.width = `${n.width}px`
     } else {
       el.style.width = 'max-content'
-      el.style.maxWidth = `${n.type === 'start' || n.type === 'end' ? MAX_W_PILL : OUTSIDE.has(n.type) ? MAX_W_OUTSIDE : MAX_W}px`
+      el.style.maxWidth = `${n.type === 'start' || n.type === 'end' ? MAX_W_PILL : OUTSIDE.has(n.type) || n.type === 'concept' ? MAX_W_OUTSIDE : MAX_W}px`
     }
     el.innerHTML = shapeMarkup(n)
     host.appendChild(el)
@@ -52,6 +52,9 @@ export async function measureNodes(nodes) {
       h = Math.max(n.height || 0, 100, textH * 2)
     } else if (n.type === 'connector') {
       w = h = CONNECTOR
+    } else if (n.type === 'concept') {
+      // A circle must contain its text box: diameter = the box's diagonal plus a little air.
+      w = h = Math.max(n.width || 0, 104, Math.ceil(Math.hypot(w, h)) + 8)
     } else if (n.height) {
       h = Math.max(h, n.height)
     }
@@ -67,14 +70,15 @@ const snap = (v) => Math.ceil(v / GRID) * GRID
 
 // The diagram grid for at="col,row": one cell is the largest node plus breathing room, so any
 // node fits any cell and a grid layout is always evenly spaced.
-export function gridSize(sizes) {
+export function gridSize(sizes, roomy = false) {
   let w = 0
   let h = 0
   sizes.forEach(([sw, sh]) => {
     w = Math.max(w, sw)
     h = Math.max(h, sh)
   })
-  return { colW: snap(w) + 72, rowH: snap(h) + 56 }
+  // Ontologies get roomier cells: links carry labels that need space between circles.
+  return { colW: snap(w) + (roomy ? 150 : 72), rowH: snap(h) + (roomy ? 110 : 56) }
 }
 
 // Nodes with at="col,row" go to the middle of that cell. Automatic nodes that end up on top of
@@ -82,7 +86,7 @@ export function gridSize(sizes) {
 function pinToGrid(spec, sizes, pos) {
   const pinned = spec.nodes.filter((n) => n.at && n.at.col && n.at.row)
   if (pinned.length === 0) return
-  const { colW, rowH } = gridSize(sizes)
+  const { colW, rowH } = gridSize(sizes, spec.diagramType === 'ontology')
   pinned.forEach((n) => {
     const p = pos.get(n.id)
     p.x = (n.at.col - 1) * colW
@@ -109,21 +113,24 @@ function pinToGrid(spec, sizes, pos) {
     })
 }
 
-// For "Download HTML": turns dragged positions into grid cells (nearest free cell each), so the
-// saved file says at="3,2" and not pixels.
-export function snapToGrid(shapeNodes) {
-  const { colW, rowH } = gridSize(new Map(shapeNodes.map((n) => [n.id, [n.data.w, n.data.h]])))
-  const taken = new Set()
+// For "Download HTML": turns dragged positions into grid cells (nearest free half-step cell
+// each), so the saved file says at="3,2" or at="2.5,2" and not pixels. A cell is taken when
+// another node is less than one cell away in both directions.
+export function snapToGrid(shapeNodes, roomy = false) {
+  const { colW, rowH } = gridSize(new Map(shapeNodes.map((n) => [n.id, [n.data.w, n.data.h]])), roomy)
+  const half = (v) => Math.round(v * 2) / 2
+  const placed = []
   const cells = new Map()
+  const free = (c, r) => placed.every((p) => Math.abs(p.col - c) >= 1 || Math.abs(p.row - r) >= 1)
   shapeNodes.forEach((n) => {
-    const col = Math.round((n.position.x + n.data.w / 2) / colW)
-    const row = Math.round((n.position.y + n.data.h / 2) / rowH)
+    const col = half((n.position.x + n.data.w / 2) / colW)
+    const row = half((n.position.y + n.data.h / 2) / rowH)
     let spot = null
-    for (let r = 0; r < 20 && !spot; r++)
-      for (let dy = -r; dy <= r && !spot; dy++)
-        for (let dx = -r; dx <= r && !spot; dx++)
-          if (Math.max(Math.abs(dx), Math.abs(dy)) === r && !taken.has(`${col + dx},${row + dy}`)) spot = { col: col + dx, row: row + dy }
-    taken.add(`${spot.col},${spot.row}`)
+    for (let r = 0; r <= 20 && !spot; r += 0.5)
+      for (let dy = -r; dy <= r && !spot; dy += 0.5)
+        for (let dx = -r; dx <= r && !spot; dx += 0.5)
+          if (Math.max(Math.abs(dx), Math.abs(dy)) === r && free(col + dx, row + dy)) spot = { col: col + dx, row: row + dy }
+    placed.push(spot)
     cells.set(n.id, spot)
   })
   const minCol = Math.min(...[...cells.values()].map((c) => c.col))
@@ -134,15 +141,20 @@ export function snapToGrid(shapeNodes) {
   })
   return cells
 }
-
 // Keeps diagrams tidy without anyone choosing sizes: nodes of the same type whose measured
 // sizes are close get the SAME size (the largest in the group, so text is never clipped),
 // and every size is rounded up to an 8px grid. Nodes with an explicit width/height attribute
 // and fixed-size shapes are left alone.
 function harmonize(nodes, sizes) {
+  // Ontology circles are all one size (the largest needed), so the diagram reads as a set.
+  const circles = nodes.filter((n) => n.type === 'concept' && !n.width)
+  if (circles.length > 1) {
+    const d = snap(Math.max(...circles.map((n) => sizes.get(n.id)[0])))
+    circles.forEach((n) => sizes.set(n.id, [d, d]))
+  }
   const byType = new Map()
   nodes.forEach((n) => {
-    if (n.type === 'connector') return
+    if (n.type === 'connector' || n.type === 'concept') return
     if (!byType.has(n.type)) byType.set(n.type, [])
     byType.get(n.type).push(n)
   })
@@ -517,7 +529,8 @@ function laneLayout(spec, sizes, pos, useManual) {
 // the lane layout always decides positions.
 export function buildGraph(spec, sizes, { useManual = true } = {}) {
   const g = new graphlib.Graph({ compound: true })
-  g.setGraph({ rankdir: spec.direction, nodesep: 64, ranksep: 88, edgesep: 24, marginx: 24, marginy: 24 })
+  const net = spec.diagramType === 'ontology' // circles + straight links need more room
+  g.setGraph({ rankdir: spec.direction, nodesep: net ? 96 : 64, ranksep: net ? 128 : 88, edgesep: 24, marginx: 24, marginy: 24 })
   g.setDefaultEdgeLabel(() => ({}))
   // Zone members are laid out as if larger by the zone padding (once per nesting level), so
   // the boxes drawn later never land on a neighbour. Zones are compound parents, which keeps
@@ -571,6 +584,7 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
         h,
         dir: spec.direction,
         assumed: n.assumed,
+        tone: n.tone,
         glyphH: OUTSIDE.has(n.type) ? GLYPH_H[n.type] : 0,
       },
       style: { width: w, height: h },
@@ -581,9 +595,10 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
     id: `e${i}-${e.from}-${e.to}`,
     source: e.from,
     target: e.to,
-    type: 'routed',
+    type: net ? 'floating' : 'routed',
     label: e.label,
     markerEnd: { type: 'arrowclosed', width: 18, height: 18 },
+    markerStart: e.both ? { type: 'arrowclosed', width: 18, height: 18 } : undefined,
     style: {
       stroke: 'var(--edge)',
       strokeWidth: 1.6,
@@ -597,7 +612,7 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
 
   const zones = makeZones(spec, shapeNodes)
   const all = [...(lanes ? lanes.laneNodes : []), ...zones.nodes, ...shapeNodes]
-  const routed = routeEdges(all, edges, spec.direction)
+  const routed = routeFor(spec, all, edges)
   return { nodes: routed.nodes, edges: routed.edges, problems: [...(lanes ? lanes.problems : []), ...zones.problems] }
 }
 
@@ -905,4 +920,101 @@ export function routeEdges(nodes, edges, dir) {
   })
   const outNodes = nodes.map((n) => (n.type === 'shape' ? { ...n, data: { ...n.data, handles: handles.get(n.id) || [] } } : n))
   return { nodes: outNodes, edges: outEdges }
+}
+
+// ---------------------------------------------------------------------------------------
+// Ontology links: straight lines between circle edges (a gentle curve only when needed).
+//  - Links between the same two nodes fan out; opposite directions go to opposite sides.
+//  - A link that would pass through another circle bends around it.
+// FloatingEdge draws them live from the nodes' positions, so they follow dragging.
+export function floatingGeometry(a, b, bend) {
+  const dx = b.cx - a.cx
+  const dy = b.cy - a.cy
+  const len = Math.hypot(dx, dy) || 1
+  const c = { x: (a.cx + b.cx) / 2 + (-dy / len) * bend, y: (a.cy + b.cy) / 2 + (dx / len) * bend }
+  // Where the line toward the control point leaves each ellipse.
+  const onEdge = (n) => {
+    const ex = c.x - n.cx
+    const ey = c.y - n.cy
+    const k = 1 / Math.sqrt((ex / n.rx) ** 2 + (ey / n.ry) ** 2 || 1e-9)
+    return { x: n.cx + ex * k, y: n.cy + ey * k }
+  }
+  return { p0: onEdge(a), c, p1: onEdge(b) }
+}
+
+export function routeNetwork(nodes, edges) {
+  const shapes = nodes.filter((n) => n.type === 'shape')
+  if (shapes.length === 0) return { nodes, edges }
+  const ell = new Map(
+    shapes.map((n) => [n.id, { cx: n.position.x + n.data.w / 2, cy: n.position.y + n.data.h / 2, rx: n.data.w / 2, ry: n.data.h / 2 }]),
+  )
+  const groups = new Map()
+  edges.forEach((e, i) => {
+    const key = [e.source, e.target].sort().join('|')
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(i)
+  })
+  const base = new Map()
+  groups.forEach((idx) =>
+    idx.forEach((i, k) => base.set(i, (edges[i].source < edges[i].target ? 1 : -1) * (k - (idx.length - 1) / 2) * 44)),
+  )
+  const hits = (e, bend) => {
+    const g = floatingGeometry(ell.get(e.source), ell.get(e.target), bend)
+    for (let t = 0.08; t <= 0.92; t += 0.06) {
+      const x = (1 - t) ** 2 * g.p0.x + 2 * (1 - t) * t * g.c.x + t * t * g.p1.x
+      const y = (1 - t) ** 2 * g.p0.y + 2 * (1 - t) * t * g.c.y + t * t * g.p1.y
+      for (const [id, el] of ell) {
+        if (id === e.source || id === e.target) continue
+        if (((x - el.cx) / (el.rx + 8)) ** 2 + ((y - el.cy) / (el.ry + 8)) ** 2 < 1) return true
+      }
+    }
+    return false
+  }
+  const curve = (e, bend) => {
+    const g = floatingGeometry(ell.get(e.source), ell.get(e.target), bend)
+    const pts = []
+    for (let k = 0; k <= 16; k++) {
+      const t = k / 16
+      pts.push({
+        x: (1 - t) ** 2 * g.p0.x + 2 * (1 - t) * t * g.c.x + t * t * g.p1.x,
+        y: (1 - t) ** 2 * g.p0.y + 2 * (1 - t) * t * g.c.y + t * t * g.p1.y,
+      })
+    }
+    return pts
+  }
+  const orient = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+  const crosses = (p, q, r, s) => orient(p, q, r) * orient(p, q, s) < 0 && orient(r, s, p) * orient(r, s, q) < 0
+  // Each link tries a few gentle curves and keeps the one that avoids circles and crosses the
+  // fewest links already placed (links that share a circle are allowed to meet there).
+  const placed = []
+  const outEdges = edges.map((e, i) => {
+    const b0 = base.get(i) || 0
+    let best = null
+    for (const d of [0, 50, -50, 100, -100, 160, -160, 230, -230]) {
+      const bend = b0 + d
+      const pts = curve(e, bend)
+      let crossings = 0
+      placed.forEach((q) => {
+        if ([q.e.source, q.e.target].some((id) => id === e.source || id === e.target)) return
+        for (let k = 0; k < 16; k++) for (let m = 0; m < 16; m++) if (crosses(pts[k], pts[k + 1], q.pts[m], q.pts[m + 1])) crossings++
+      })
+      const cost = (hits(e, bend) ? 1000 : 0) + crossings * 25 + Math.abs(d) * 0.05
+      if (!best || cost < best.cost) best = { bend, pts, cost }
+      if (cost < 1) break
+    }
+    placed.push({ e, pts: best.pts })
+    return { ...e, sourceHandle: 's', targetHandle: 't', data: { ...(e.data || {}), bend: best.bend } }
+  })
+  // RF needs a connection point on each node; the floating edge ignores where it is.
+  const handles = [
+    { id: 's', role: 'source', side: 'right', pct: 0.5 },
+    { id: 't', role: 'target', side: 'left', pct: 0.5 },
+  ]
+  const outNodes = nodes.map((n) => (n.type === 'shape' ? { ...n, data: { ...n.data, handles } } : n))
+  return { nodes: outNodes, edges: outEdges }
+}
+
+// Picks the router for the diagram's type. Used after layout and after a node is dragged.
+export function routeFor(spec, nodes, edges) {
+  return spec.diagramType === 'ontology' ? routeNetwork(nodes, edges) : routeEdges(nodes, edges, spec.direction)
 }

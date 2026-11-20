@@ -11,6 +11,7 @@ description: Pick the right diagram notation and check a diagram against it befo
 | Steps and decisions of one procedure or algorithm | Flowchart | ISO 5807 symbols | [flowchart.md](reference/flowchart.md) |
 | Who does what, handoffs between people, teams or systems | Process flow (swimlane) | BPMN 2.0 core | [process-flow.md](reference/process-flow.md) |
 | How data moves between processes, stores and outside parties | Data flow diagram | Gane-Sarson | [dfd.md](reference/dfd.md) |
+| What things are and how they relate (concepts and links, no sequence) | Ontology | Concept circles with labelled directed links | [ontology.md](reference/ontology.md) |
 
 "Process flow diagram" means the business/IT swimlane meaning (BPMN), not the chemical-engineering plant diagram. If the user clearly means a plant diagram, say it is out of scope for this viewer.
 Mixed asks: draw one diagram per question. Do not mix notations in one diagram.

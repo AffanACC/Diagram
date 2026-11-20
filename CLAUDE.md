@@ -17,7 +17,7 @@ Examples: `diagrams\example-flowchart.html`, `example-process-flow.html`, `examp
 ## Working on the viewer itself (only when asked)
 Source is `src\`: `spec.js` (reads the HTML source), `shapes.js` (node types and their markup),
 `layout.js` (measuring, harmonised sizes, dagre layout, straightening, swimlanes, grid, edge
-routing), `ShapeNode.jsx`, `LaneNode.jsx`, `ZoneNode.jsx`, `RoutedEdge.jsx`, `FileMenu.jsx`, `App.jsx`,
+routing), `ShapeNode.jsx`, `LaneNode.jsx`, `ZoneNode.jsx`, `RoutedEdge.jsx`, `FloatingEdge.jsx` (ontology links), `FileMenu.jsx`, `App.jsx`,
 `style.css` (tokens at the top). After editing: `pnpm run build:viewer` (rewrites the committed
 `template\index.html`), then `pnpm run make`. A change to node types or attributes must be
 reflected in the `diagram-format` skill and `reference\types.md`.

@@ -18,10 +18,11 @@ import RoutedEdge from './RoutedEdge.jsx'
 import FileMenu from './FileMenu.jsx'
 import { readSpec } from './spec.js'
 import ZoneNode from './ZoneNode.jsx'
-import { measureNodes, buildGraph, routeEdges, refreshZones, snapToGrid } from './layout.js'
+import FloatingEdge from './FloatingEdge.jsx'
+import { measureNodes, buildGraph, routeFor, refreshZones, snapToGrid } from './layout.js'
 
 const nodeTypes = { shape: ShapeNode, lane: LaneNode, zone: ZoneNode }
-const edgeTypes = { routed: RoutedEdge }
+const edgeTypes = { routed: RoutedEdge, floating: FloatingEdge }
 
 function Flow() {
   const [spec, setSpec] = useState(readSpec)
@@ -33,10 +34,10 @@ function Flow() {
 
   // After dragging a node, re-pick which sides its connections use.
   const onNodeDragStop = useCallback(() => {
-    const r = routeEdges(getNodes(), getEdges(), spec.direction)
+    const r = routeFor(spec, getNodes(), getEdges())
     setNodes(refreshZones(r.nodes))
     setEdges(r.edges)
-  }, [getNodes, getEdges, spec.direction, setNodes, setEdges])
+  }, [getNodes, getEdges, spec, setNodes, setEdges])
 
   const refit = useCallback(
     () => requestAnimationFrame(() => requestAnimationFrame(() => fitView({ padding: '8%', duration: 250 }))),
@@ -88,7 +89,7 @@ function Flow() {
     if (root) root.innerHTML = ''
     const tpl = clone.querySelector('template#diagram-source')
     // Swimlane layouts decide positions themselves, so only other diagrams get grid cells.
-    const cells = spec.lanes.length ? new Map() : snapToGrid(getNodes().filter((n) => n.type === 'shape'))
+    const cells = spec.lanes.length ? new Map() : snapToGrid(getNodes().filter((n) => n.type === 'shape'), spec.diagramType === 'ontology')
     tpl.content.querySelectorAll('node').forEach((el) => {
       const c = cells.get(el.getAttribute('id'))
       el.removeAttribute('x')

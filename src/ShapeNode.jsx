@@ -14,9 +14,12 @@ function handleStyle(h, glyphH) {
 // One node component for every shape. data.markup is the shape's inner HTML (see shapes.js);
 // data.handles are the connection points chosen by routeEdges (see layout.js).
 export default function ShapeNode({ data }) {
-  const { markup, kind, w, h, assumed, glyphH, handles = [] } = data
+  const { markup, kind, w, h, assumed, tone, glyphH, handles = [] } = data
   return (
-    <div className={`shape shape-${kind}${assumed ? ' assumed' : ''}`} style={{ width: w, height: h }}>
+    <div
+      className={`shape shape-${kind}${assumed ? ' assumed' : ''}${tone ? ` tone-${tone}` : ''}`}
+      style={{ width: w, height: h }}
+    >
       <div className="inner" dangerouslySetInnerHTML={{ __html: markup }} />
       {handles.map((hd) => (
         <Handle

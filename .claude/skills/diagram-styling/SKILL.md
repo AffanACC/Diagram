@@ -10,7 +10,7 @@ if the user asks for a different look, change the theme tokens once, in one plac
 source. Never style individual nodes.
 
 ## What you must not do
-- No `style=`, colours, fonts, sizes, `width`, `height` or `align` on nodes or in content.
+- No `style=`, colour values, fonts, sizes, `width`, `height` or `align` on nodes or in content. The only colour control is `tone` from a fixed palette (below).
 - No emoji or decorative characters in labels.
 - No web fonts, CDN links or external images (client data stays local; make refuses them).
 - Do not invent a new palette. Take values from a named, openly licensed source and record it.
@@ -25,6 +25,12 @@ source. Never style individual nodes.
 | Heavy outline | `entity` | Things outside the system |
 | Dashed + "assumed" tag | anything marked `assumed` | Not yet confirmed |
 If something needs emphasis, use its node type; do not colour it.
+
+## Tones: the only colour choice
+`tone="grey|blue|green|orange|purple|red"` on any node. Palette: Tailwind (MIT), 50 for the fill and 600 for the line: slate, sky, emerald, orange, violet, rose. An unknown tone is ignored with a warning, so no other colour can be used.
+- Use a tone only to tell categories apart (same tone = same category) or when the user asks for a colour. Never decorate.
+- Keep to about five tones in one diagram and say what each means in the reply.
+- A tone replaces the type's default colour, so keep decisions and gateways untoned unless the user wants them coloured.
 
 ## Content rules
 - Labels 2 to 5 words; detail in `<small>` or a card body.
