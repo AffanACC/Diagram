@@ -46,8 +46,8 @@ Every DFD edge needs a `label` naming the data.
 ## Groupings (not node types)
 | Element | Use |
 |---|---|
-| `<lane id label>` + `lane="id"` | Swimlane rows by role (direction `LR`) |
-| `<zone id label>` + `zone="id"` | A labelled box around a group: system boundary, stage, area, trust boundary |
+| `<lane label>` containing nodes | Swimlane rows by role (direction `LR`) |
+| `<zone label>` containing nodes | A labelled box around a group: system boundary, stage, area, trust boundary. Zones nest. |
 | `pool="..."` on `<diagram>` | Pool title strip for swimlanes |
 | `skeleton` on `<diagram>` | Badge: the whole draft is assumed |
 

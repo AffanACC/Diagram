@@ -1,14 +1,18 @@
 // Reads the authored diagram from the <template id="diagram-source"> element.
 // The browser's own HTML parser does the work, so node content can be any HTML.
 //
-//   <diagram title=".." description=".." direction="LR|TB" pool="optional pool name">
-//     <lane id="ops" label="Operations"></lane>              (optional swimlanes, LR only)
-//     <node id="a" type="card" lane="ops" width="300" align="center" assumed>...any HTML...</node>
+//   <diagram title=".." description=".." direction="LR|TB" pool="optional pool name" skeleton>
+//     <lane label="Operations">                      swimlane row (LR only): nodes inside belong to it
+//       <node id="a" type="card" at="3,2" assumed>...any HTML...</node>
+//     </lane>
+//     <zone label="Order system">                    labelled box around its nodes; zones can nest
+//       <node id="p" type="dfd-process" num="1.2">Validate order</node>
+//     </zone>
 //     <node id="e" type="event" kind="start">Order received</node>
-//     <node id="p" type="dfd-process" num="1.2">Validate order</node>
 //     <edge from="a" to="b" label=".." dashed assumed></edge>
 //   </diagram>
-// Types and their attributes are listed at the top of shapes.js.
+// The older attribute form also works: <lane id=".." label=".."></lane> then lane=".." on nodes,
+// and zone=".." on nodes. Types and their attributes are listed at the top of shapes.js.
 
 import { ALIASES, TYPES, EVENT_KINDS, GATEWAY_KINDS } from './shapes.js'
 
@@ -17,6 +21,7 @@ const num = (v) => {
   const n = Number(v)
   return Number.isFinite(n) ? n : undefined
 }
+
 // at="3,2" = column 3, row 2 on the diagram grid (1-based, from the top left). "3" alone
 // sets only the column (used with swimlanes, where the lane decides the row).
 function parseAt(v, id, problems) {
@@ -30,6 +35,31 @@ function parseAt(v, id, problems) {
 }
 const flag = (el, name) => el.hasAttribute(name) && el.getAttribute(name) !== 'false'
 
+// Reads <lane> or <zone> elements: id is optional (made up if missing), label defaults to the id.
+function readGroups(root, tag, problems, fallbackLabel) {
+  const groups = []
+  const idOf = new Map()
+  const used = new Set()
+  root.querySelectorAll(tag).forEach((el, i) => {
+    let id = el.getAttribute('id')
+    if (id && used.has(id)) return problems.push(`Duplicate ${tag} id "${id}" was skipped`)
+    if (!id) {
+      let k = i + 1
+      while (used.has(`${tag}-${k}`)) k++
+      id = `${tag}-${k}`
+    }
+    used.add(id)
+    idOf.set(el, id)
+    const parentEl = el.parentElement ? el.parentElement.closest(tag) : null
+    groups.push({ id, label: el.getAttribute('label') || (el.getAttribute('id') ? id : fallbackLabel(i)), parentEl })
+  })
+  groups.forEach((g) => {
+    g.parent = g.parentEl ? idOf.get(g.parentEl) : undefined
+    delete g.parentEl
+  })
+  return { groups, idOf }
+}
+
 export function readSpec() {
   const problems = []
   const tpl = document.getElementById('diagram-source')
@@ -39,23 +69,9 @@ export function readSpec() {
   }
   const direction = root.getAttribute('direction') === 'TB' ? 'TB' : 'LR'
 
-  const lanes = []
-  root.querySelectorAll('lane').forEach((el) => {
-    const id = el.getAttribute('id')
-    if (!id) return problems.push('A <lane> has no id and was skipped')
-    if (lanes.some((l) => l.id === id)) return problems.push(`Duplicate lane id "${id}" was skipped`)
-    lanes.push({ id, label: el.getAttribute('label') || id })
-  })
+  const { groups: lanes, idOf: laneIdOf } = readGroups(root, 'lane', problems, (i) => `Lane ${i + 1}`)
   if (lanes.length && direction === 'TB') problems.push('Lanes need direction="LR"; they were ignored')
-
-  // Zones: labelled boxes drawn around a group of nodes (nodes join with zone="id").
-  const zones = []
-  root.querySelectorAll('zone').forEach((el) => {
-    const id = el.getAttribute('id')
-    if (!id) return problems.push('A <zone> has no id and was skipped')
-    if (zones.some((z) => z.id === id)) return problems.push(`Duplicate zone id "${id}" was skipped`)
-    zones.push({ id, label: el.getAttribute('label') || id })
-  })
+  const { groups: zones, idOf: zoneIdOf } = readGroups(root, 'zone', problems, (i) => `Zone ${i + 1}`)
 
   const seen = new Set()
   const nodes = []
@@ -83,12 +99,16 @@ export function readSpec() {
         kind = 'xor'
       }
     }
-    const lane = el.getAttribute('lane') || undefined
+    // Membership: the nearest <lane> / <zone> around the node, else the lane=/zone= attribute.
+    const laneEl = el.closest('lane')
+    const lane = (laneEl && laneIdOf.get(laneEl)) || el.getAttribute('lane') || undefined
     if (lane && lanes.length && !lanes.some((l) => l.id === lane)) {
       problems.push(`Node "${id}" is in unknown lane "${lane}"`)
     }
-    const zone = el.getAttribute('zone') || undefined
+    const zoneEl = el.closest('zone')
+    const zone = (zoneEl && zoneIdOf.get(zoneEl)) || el.getAttribute('zone') || undefined
     if (zone && !zones.some((z) => z.id === zone)) problems.push(`Node "${id}" is in unknown zone "${zone}"`)
+
     nodes.push({
       id,
       type,

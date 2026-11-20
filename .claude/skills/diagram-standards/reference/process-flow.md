@@ -39,5 +39,6 @@ Use `direction="LR"` with lanes. Defer: event-based, complex and transaction gat
 
 ## Authoring tips
 - Put each step in the lane of whoever does it. If the user has not said who, use `assumed` on the lane assignment by marking the node `assumed`.
+- Write each lane as a `<lane label="...">` tag with its steps inside, in the order you want the lanes to appear.
 - 3 to 6 lanes reads well; split the process if there are more.
 - Lanes fix node positions automatically, so dragging is for exploring only.

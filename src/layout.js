@@ -163,27 +163,67 @@ function harmonize(nodes, sizes) {
   }
 }
 
-// Zones: a labelled box around the nodes that join it (zone="id"). The box is simply the
-// bounding box of its members plus padding; it follows them when they are dragged.
+// Zones: a labelled box around the nodes inside a <zone> (or marked zone="id"). Zones nest.
+// The box is the bounding box of its nodes and inner zones plus padding, and it follows them
+// when they are dragged.
 const ZONE_PAD = 36
+
+function zoneTree(spec) {
+  const byId = new Map(spec.zones.map((z) => [z.id, z]))
+  const children = new Map(spec.zones.map((z) => [z.id, []]))
+  spec.zones.forEach((z) => {
+    if (z.parent && children.has(z.parent)) children.get(z.parent).push(z.id)
+  })
+  const depth = (id) => {
+    const p = byId.get(id)?.parent
+    return p && byId.has(p) ? 1 + depth(p) : 1
+  }
+  const height = (id) => 1 + Math.max(0, ...children.get(id).map(height))
+  // Every node in this zone or in a zone inside it.
+  const members = (id) => [...spec.nodes.filter((n) => n.zone === id).map((n) => n.id), ...children.get(id).flatMap(members)]
+  return { children, depth, height, members }
+}
 
 export function refreshZones(nodes) {
   const byId = new Map(nodes.map((n) => [n.id, n]))
+  const zoneByZid = new Map(nodes.filter((n) => n.type === 'zone').map((n) => [n.data.zid, n]))
+  const memo = new Map()
+  const rectOf = (zn) => {
+    if (memo.has(zn.id)) return memo.get(zn.id)
+    const rs = []
+    zn.data.members.forEach((id) => {
+      const m = byId.get(id)
+      if (m) rs.push({ l: m.position.x, t: m.position.y, r: m.position.x + m.data.w, b: m.position.y + m.data.h })
+    })
+    zn.data.children.forEach((zid) => {
+      const c = zoneByZid.get(zid)
+      const cr = c && rectOf(c)
+      if (cr) rs.push(cr)
+    })
+    const r = rs.length
+      ? {
+          l: Math.min(...rs.map((x) => x.l)) - ZONE_PAD,
+          t: Math.min(...rs.map((x) => x.t)) - ZONE_PAD,
+          r: Math.max(...rs.map((x) => x.r)) + ZONE_PAD,
+          b: Math.max(...rs.map((x) => x.b)) + ZONE_PAD,
+        }
+      : null
+    memo.set(zn.id, r)
+    return r
+  }
   return nodes.map((n) => {
     if (n.type !== 'zone') return n
-    const ms = n.data.members.map((id) => byId.get(id)).filter(Boolean)
-    if (ms.length === 0) return n
-    const l = Math.min(...ms.map((m) => m.position.x)) - ZONE_PAD
-    const t = Math.min(...ms.map((m) => m.position.y)) - ZONE_PAD
-    const r = Math.max(...ms.map((m) => m.position.x + m.data.w)) + ZONE_PAD
-    const b = Math.max(...ms.map((m) => m.position.y + m.data.h)) + ZONE_PAD
-    return { ...n, position: { x: l, y: t }, data: { ...n.data, w: r - l, h: b - t }, style: { ...n.style, width: r - l, height: b - t } }
+    const r = rectOf(n)
+    if (!r) return n
+    return { ...n, position: { x: r.l, y: r.t }, data: { ...n.data, w: r.r - r.l, h: r.b - r.t }, style: { ...n.style, width: r.r - r.l, height: r.b - r.t } }
   })
 }
 
 // A node that is not in a zone but landed inside its box (for example an outside party that
 // sits between two members in the flow) is moved just outside it, to whichever side is nearer.
 function evictFromZones(spec, sizes, pos) {
+  if (spec.zones.length === 0) return
+  const zt = zoneTree(spec)
   const horizontal = spec.direction !== 'TB'
   const cross = horizontal ? 'y' : 'x'
   const crossIdx = horizontal ? 1 : 0
@@ -193,15 +233,17 @@ function evictFromZones(spec, sizes, pos) {
     return { l: p.x - w / 2, r: p.x + w / 2, t: p.y - h / 2, b: p.y + h / 2 }
   }
   spec.zones.forEach((z) => {
-    const members = spec.nodes.filter((n) => n.zone === z.id)
-    if (members.length === 0) return
-    const rs = members.map((m) => rectOf(m.id))
-    const L = Math.min(...rs.map((r) => r.l)) - ZONE_PAD
-    const R = Math.max(...rs.map((r) => r.r)) + ZONE_PAD
-    const T = Math.min(...rs.map((r) => r.t)) - ZONE_PAD
-    const B = Math.max(...rs.map((r) => r.b)) + ZONE_PAD
+    const ids = zt.members(z.id)
+    if (ids.length === 0) return
+    const inside = new Set(ids)
+    const pad = ZONE_PAD * zt.height(z.id)
+    const rs = ids.map(rectOf)
+    const L = Math.min(...rs.map((r) => r.l)) - pad
+    const R = Math.max(...rs.map((r) => r.r)) + pad
+    const T = Math.min(...rs.map((r) => r.t)) - pad
+    const B = Math.max(...rs.map((r) => r.b)) + pad
     spec.nodes
-      .filter((n) => n.zone !== z.id)
+      .filter((n) => !inside.has(n.id))
       .forEach((n) => {
         const r = rectOf(n.id)
         if (!(r.l < R && L < r.r && r.t < B && T < r.b)) return
@@ -215,26 +257,36 @@ function evictFromZones(spec, sizes, pos) {
 }
 
 function makeZones(spec, shapeNodes) {
-  const zoneNodes = spec.zones
-    .map((z) => ({ z, members: spec.nodes.filter((n) => n.zone === z.id).map((n) => n.id) }))
-    .filter((x) => x.members.length > 0)
-    .map(({ z, members }) => ({
-      id: `zone:${z.id}`,
-      type: 'zone',
-      position: { x: 0, y: 0 },
-      data: { label: z.label, w: 0, h: 0, members },
-      style: { width: 0, height: 0 },
-      draggable: false,
-      selectable: false,
-      focusable: false,
-      zIndex: -1,
-    }))
+  const zt = zoneTree(spec)
+  const live = spec.zones.filter((z) => zt.members(z.id).length > 0)
+  const liveIds = new Set(live.map((z) => z.id))
+  const zoneNodes = live.map((z) => ({
+    id: `zone:${z.id}`,
+    type: 'zone',
+    position: { x: 0, y: 0 },
+    data: {
+      zid: z.id,
+      label: z.label,
+      w: 0,
+      h: 0,
+      depth: zt.depth(z.id),
+      members: spec.nodes.filter((n) => n.zone === z.id).map((n) => n.id),
+      children: zt.children.get(z.id).filter((c) => liveIds.has(c)),
+    },
+    style: { width: 0, height: 0 },
+    draggable: false,
+    selectable: false,
+    focusable: false,
+    // Outer zones sit behind inner ones, all behind the nodes and above swimlane bands.
+    zIndex: Math.min(-1, -4 + zt.depth(z.id)),
+  }))
   const sized = refreshZones([...zoneNodes, ...shapeNodes]).filter((n) => n.type === 'zone')
   // A zone box must not sit on top of a node that is not in it.
   const problems = []
   sized.forEach((zn) => {
+    const inside = new Set(zt.members(zn.data.zid))
     shapeNodes.forEach((n) => {
-      if (zn.data.members.includes(n.id)) return
+      if (inside.has(n.id)) return
       const clash =
         n.position.x < zn.position.x + zn.data.w &&
         zn.position.x < n.position.x + n.data.w &&
@@ -442,7 +494,7 @@ function laneLayout(spec, sizes, pos, useManual) {
     draggable: false,
     selectable: false,
     focusable: false,
-    zIndex: -2,
+    zIndex: -6,
   }))
   if (spec.pool) {
     laneNodes.push({
@@ -454,7 +506,7 @@ function laneLayout(spec, sizes, pos, useManual) {
       draggable: false,
       selectable: false,
       focusable: false,
-      zIndex: -1,
+      zIndex: -5,
     })
   }
   return { placed, laneNodes, problems }
@@ -467,26 +519,29 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
   const g = new graphlib.Graph({ compound: true })
   g.setGraph({ rankdir: spec.direction, nodesep: 64, ranksep: 88, edgesep: 24, marginx: 24, marginy: 24 })
   g.setDefaultEdgeLabel(() => ({}))
-  // Zone members are laid out as if they were larger by the zone's padding, so the box drawn
-  // around them later never lands on a neighbour. Zones are compound parents, which keeps the
-  // members of a zone together.
-  const zoneIds = new Set(spec.zones.map((z) => z.id))
+  // Zone members are laid out as if larger by the zone padding (once per nesting level), so
+  // the boxes drawn later never land on a neighbour. Zones are compound parents, which keeps
+  // the members of a zone together.
+  const zt = zoneTree(spec)
+  const zoneIds = new Set(spec.zones.filter((z) => zt.members(z.id).length > 0).map((z) => z.id))
   const inZone = (n) => n.zone && zoneIds.has(n.zone)
   const lsz = new Map(
     spec.nodes.map((n) => {
       const [w, h] = sizes.get(n.id)
-      return [n.id, inZone(n) ? [w + 2 * ZONE_PAD, h + 2 * ZONE_PAD] : [w, h]]
+      const k = inZone(n) ? 2 * ZONE_PAD * zt.depth(n.zone) : 0
+      return [n.id, [w + k, h + k]]
     }),
   )
   spec.zones.forEach((z) => {
-    if (spec.nodes.some((n) => n.zone === z.id)) g.setNode(z.id, {})
+    if (!zoneIds.has(z.id)) return
+    g.setNode(z.id, {})
+    if (z.parent && zoneIds.has(z.parent)) g.setParent(z.id, z.parent)
   })
   spec.nodes.forEach((n) => {
     const [width, height] = lsz.get(n.id)
     g.setNode(n.id, { width, height })
     if (inZone(n)) g.setParent(n.id, n.zone)
-  })
-  // Labelled edges reserve room for their label so labels do not land on arrows or nodes.
+  })  // Labelled edges reserve room for their label so labels do not land on arrows or nodes.
   spec.edges.forEach((e) =>
     g.setEdge(e.from, e.to, e.label ? { width: Math.max(44, e.label.length * 7 + 20), height: 24, labelpos: 'c' } : {}),
   )
