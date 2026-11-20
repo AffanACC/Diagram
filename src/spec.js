@@ -69,6 +69,8 @@ function readGroups(root, tag, problems, fallbackLabel) {
       // A zone may carry type="ontology" (or "flow" to opt out of an ontology file): see readSpec.
       own: tag === 'zone' ? zoneType(el.getAttribute('type'), id, problems) : undefined,
       parentEl,
+      // The zone a lane sits in (a lane inside a zone is a swimlane section of that zone).
+      zoneEl: tag === 'lane' && el.parentElement ? el.parentElement.closest('zone') : null,
     })
   })
   groups.forEach((g) => {
@@ -92,6 +94,11 @@ export function readSpec() {
   const { groups: lanes, idOf: laneIdOf } = readGroups(root, 'lane', problems, (i) => `Lane ${i + 1}`)
   if (lanes.length && direction === 'TB') problems.push('Lanes need direction="LR"; they were ignored')
   const { groups: zones, idOf: zoneIdOf } = readGroups(root, 'zone', problems, (i) => `Zone ${i + 1}`)
+  lanes.forEach((l) => {
+    l.zone = l.zoneEl ? zoneIdOf.get(l.zoneEl) : undefined
+    delete l.zoneEl
+  })
+  zones.forEach((z) => delete z.zoneEl)
 
   // The type that applies per zone: its own, else its parent zone's, else the file's. `net` = ontology.
   const zoneById = new Map(zones.map((z) => [z.id, z]))

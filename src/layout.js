@@ -162,8 +162,8 @@ function placedZoneGroups(spec, live, zt) {
 
 const ZONE_GAP = 40
 
-function pinToGrid(spec, sizes, lsz, pos) {
-  const pinnedNodes = spec.nodes.filter((n) => n.at && n.at.col)
+function pinToGrid(spec, sizes, lsz, pos, locked = new Set()) {
+  const pinnedNodes = spec.nodes.filter((n) => n.at && n.at.col && !locked.has(n.id))
   const hasZoneAt = spec.zones.some((z) => z.at && z.at.col)
   if (pinnedNodes.length === 0 && !hasZoneAt) return
   const gridOf = gridsFor(spec, sizes)
@@ -218,24 +218,32 @@ function pinToGrid(spec, sizes, lsz, pos) {
   placedZoneGroups(spec, live, zt).forEach(([, zs]) => {
     const boxes = new Map(zs.map((z) => [z.id, box(z)]))
     const rowKey = (z) => z.at.row || 1
-    const cols = [...new Set(zs.map((z) => z.at.col))].sort((a, b) => a - b)
     const rows = [...new Set(zs.map(rowKey))].sort((a, b) => a - b)
-    const w = new Map()
     const h = new Map()
     zs.forEach((z) => {
       const b = boxes.get(z.id)
-      w.set(z.at.col, Math.max(w.get(z.at.col) || 0, b[2] - b[0]))
       h.set(rowKey(z), Math.max(h.get(rowKey(z)) || 0, b[3] - b[1]))
     })
-    const xOf = new Map()
     const yOf = new Map()
-    let x = Math.min(...[...boxes.values()].map((b) => b[0]))
+    const x0 = Math.min(...[...boxes.values()].map((b) => b[0]))
     let y = Math.min(...[...boxes.values()].map((b) => b[1]))
-    cols.forEach((c) => (xOf.set(c, x), (x += w.get(c) + ZONE_GAP)))
     rows.forEach((r) => (yOf.set(r, y), (y += h.get(r) + ZONE_GAP)))
+    // Within a row the zones are packed left to right by their own widths (so a narrow zone sits
+    // right next to its neighbour, not a whole wide column away); rows stack as tall as their tallest.
+    const xOf = new Map()
+    rows.forEach((r) => {
+      let x = x0
+      zs.filter((z) => rowKey(z) === r)
+        .sort((a, b) => a.at.col - b.at.col)
+        .forEach((z) => {
+          const b = boxes.get(z.id)
+          xOf.set(z.id, x)
+          x += b[2] - b[0] + ZONE_GAP
+        })
+    })
     zs.forEach((z) => {
       const b = boxes.get(z.id)
-      const dx = xOf.get(z.at.col) - b[0]
+      const dx = xOf.get(z.id) - b[0]
       const dy = yOf.get(rowKey(z)) - b[1]
       zt.members(z.id).forEach((id) => {
         pos.get(id).x += dx
@@ -264,7 +272,7 @@ function pinToGrid(spec, sizes, lsz, pos) {
       )
     })
   spec.nodes
-    .filter((n) => !pinnedIds.has(n.id))
+    .filter((n) => !pinnedIds.has(n.id) && !locked.has(n.id))
     .forEach((n) => {
       const p = pos.get(n.id)
       // A column-only pin keeps its column, so it slides up or down; any other node slides sideways.
@@ -467,7 +475,7 @@ export function refreshZones(nodes) {
 
 // A node that is not in a zone but landed inside its box (for example an outside party that
 // sits between two members in the flow) is moved just outside it, to whichever side is nearer.
-function evictFromZones(spec, sizes, pos) {
+function evictFromZones(spec, sizes, pos, locked = new Set()) {
   if (spec.zones.length === 0) return
   const zt = zoneTree(spec)
   const horizontal = spec.direction !== 'TB'
@@ -489,7 +497,7 @@ function evictFromZones(spec, sizes, pos) {
     const T = Math.min(...rs.map((r) => r.t)) - pad
     const B = Math.max(...rs.map((r) => r.b)) + pad
     spec.nodes
-      .filter((n) => !inside.has(n.id) && !(n.at && n.at.row)) // a node pinned with at stays where it was put
+      .filter((n) => !inside.has(n.id) && !locked.has(n.id) && !(n.at && n.at.row)) // pinned / lane nodes stay where they were put
       .forEach((n) => {
         const r = rectOf(n.id)
         if (!(r.l < R && L < r.r && r.t < B && T < r.b)) return
@@ -502,7 +510,7 @@ function evictFromZones(spec, sizes, pos) {
   })
 }
 
-function makeZones(spec, shapeNodes) {
+function makeZones(spec, shapeNodes, laneNodes = []) {
   const zt = zoneTree(spec)
   const live = spec.zones.filter((z) => zt.members(z.id).length > 0)
   const liveIds = new Set(live.map((z) => z.id))
@@ -516,7 +524,8 @@ function makeZones(spec, shapeNodes) {
       w: 0,
       h: 0,
       depth: zt.depth(z.id),
-      members: spec.nodes.filter((n) => n.zone === z.id).map((n) => n.id),
+      // A zone that holds lanes also wraps their bands.
+      members: [...spec.nodes.filter((n) => n.zone === z.id).map((n) => n.id), ...laneNodes.filter((l) => l.data.zid === z.id).map((l) => l.id)],
       children: zt.children.get(z.id).filter((c) => liveIds.has(c)),
     },
     style: { width: 0, height: 0 },
@@ -526,7 +535,7 @@ function makeZones(spec, shapeNodes) {
     // Outer zones sit behind inner ones, all behind the nodes and above swimlane bands.
     zIndex: Math.min(-1, -4 + zt.depth(z.id)),
   }))
-  const sized = refreshZones([...zoneNodes, ...shapeNodes]).filter((n) => n.type === 'zone')
+  const sized = refreshZones([...zoneNodes, ...shapeNodes, ...laneNodes]).filter((n) => n.type === 'zone')
   // A zone box must not sit on top of a node that is not in it.
   const problems = []
   sized.forEach((zn) => {
@@ -551,7 +560,7 @@ function makeZones(spec, shapeNodes) {
 //     column may be nudged away to make room.
 //  3. Chains are straightened again, since step 2 may have moved a node.
 // A move is only made if it keeps a gap to every other node. Real branches keep their bends.
-function straighten(spec, sizes, pos) {
+function straighten(spec, sizes, pos, locked = new Set()) {
   const horizontal = spec.direction !== 'TB'
   const cross = horizontal ? 'y' : 'x'
   const main = horizontal ? 'x' : 'y'
@@ -585,7 +594,7 @@ function straighten(spec, sizes, pos) {
       const targets = outs.get(u.id)
       if (!targets || targets.size !== 1) return
       const v = [...targets][0]
-      if (ins.get(v).size !== 1) return
+      if (locked.has(v) || ins.get(v).size !== 1) return
       const want = wantFor({ from: u.id, to: v })
       if (Math.abs(pos.get(v)[cross] - want) > 0.5 && blockersOf(v, want).length === 0) pos.get(v)[cross] = want
     })
@@ -593,7 +602,7 @@ function straighten(spec, sizes, pos) {
   const branches = () =>
     forward.forEach((e) => {
       const v = e.to
-      if (ins.get(v).size !== 1) return
+      if (locked.has(v) || ins.get(v).size !== 1) return
       const want = wantFor(e)
       const off = Math.abs(pos.get(v)[cross] - want)
       // "A little off" = less than the node's own size across: that is a jog, not a branch.
@@ -603,8 +612,8 @@ function straighten(spec, sizes, pos) {
         pos.get(v)[cross] = want
         return
       }
-      // Only nudge neighbours in the same column.
-      if (blockers.some((b) => Math.abs(pos.get(b.id)[main] - pos.get(v)[main]) > 1)) return
+      // Only nudge neighbours in the same column (never ones locked in place).
+      if (blockers.some((b) => locked.has(b.id) || Math.abs(pos.get(b.id)[main] - pos.get(v)[main]) > 1)) return
       const moves = blockers.map((b) => {
         const dir = Math.sign(pos.get(b.id)[cross] - want) || 1
         return [b.id, want + dir * ((span(b.id, cross) + span(v, cross)) / 2 + 24)]
@@ -657,15 +666,15 @@ function laneLayout(spec, sizes, pos, useManual) {
   })
 
   const minX = Math.min(...spec.nodes.map((n) => pos.get(n.id).x - sizes.get(n.id)[0] / 2))
-  const maxX = Math.max(...spec.nodes.map((n) => pos.get(n.id).x + sizes.get(n.id)[0] / 2))
   const shift = POOL_W + LABEL_W + 48 - minX
-  // A node with at="col" is placed on the column grid; the others follow the automatic layout.
-  const { colW } = gridSize(sizes)
+  // A node with at="col" is placed on the column grid (each column as wide as the widest node
+  // pinned to it); the others follow the automatic layout.
+  const tracks = makeTracks(spec.nodes.filter((n) => n.at && n.at.col), sizes, false)
   const x0Of = (n) =>
     useManual && n.at
-      ? POOL_W + LABEL_W + 48 + (n.at.col - 1) * colW + (colW - sizes.get(n.id)[0]) / 2
+      ? POOL_W + LABEL_W + 48 + tracks.x(n.at.col) - sizes.get(n.id)[0] / 2
       : pos.get(n.id).x - sizes.get(n.id)[0] / 2 + shift
-  let maxRight = maxX + shift
+  let maxRight = 0 // grows to the right edge of the placed nodes
 
   const placed = new Map()
   const bands = []
@@ -763,7 +772,7 @@ function laneLayout(spec, sizes, pos, useManual) {
 // or height top-down), so their edges all end the same distance from the start and the
 // column / row has one clean edge. Only nodes of one type, with no size set by hand, and the
 // widest keeps its size, so nothing is clipped. Returns a new sizes map.
-function alignFanOuts(spec, sizes, pos) {
+function alignFanOuts(spec, sizes, pos, locked = new Set()) {
   const horizontal = spec.direction !== 'TB'
   const along = horizontal ? 'x' : 'y'
   const dim = horizontal ? 0 : 1
@@ -781,7 +790,7 @@ function alignFanOuts(spec, sizes, pos) {
     let run = []
     const flush = () => {
       const nodes = run.map((id) => byId.get(id))
-      if (run.length > 1 && nodes.every((n) => n.type === nodes[0].type && !FIXED.has(n.type) && !n.width && !n.height)) {
+      if (run.length > 1 && nodes.every((n) => n.type === nodes[0].type && !FIXED.has(n.type) && !n.width && !n.height && !locked.has(n.id))) {
         const v = Math.max(...run.map((id) => out.get(id)[dim]))
         run.forEach((id) => {
           const s = [...out.get(id)]
@@ -805,8 +814,8 @@ function alignFanOuts(spec, sizes, pos) {
 // (ranks) are spaced again from the real node sizes: each column starts one gap after the widest
 // node of the one before, or a little more when a label sits on an edge between them. The first
 // column stays put. Nothing moves across the flow, so rows are unchanged.
-function compactRanks(spec, sizes, pos) {
-  const flow = spec.nodes.filter((n) => !n.net)
+function compactRanks(spec, sizes, pos, locked = new Set()) {
+  const flow = spec.nodes.filter((n) => !n.net && !locked.has(n.id))
   // Ontology nodes are not compacted; if any of them is free (no `at`), leave the layout alone.
   if (flow.length === 0 || spec.nodes.some((n) => n.net && !(n.at && n.at.col))) return
   const horizontal = spec.direction !== 'TB'
@@ -890,21 +899,77 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
   )
   layout(g)
   const pos = new Map(spec.nodes.map((n) => [n.id, g.node(n.id)]))
-  if (spec.lanes.length === 0) {
-    compactRanks(spec, sizes, pos)
-    straighten(spec, lsz, pos)
-    if (useManual) pinToGrid(spec, sizes, lsz, pos)
-    evictFromZones(spec, sizes, pos)
-    sizes = alignFanOuts(spec, sizes, pos)
-  }
 
-  const lanes = spec.lanes.length > 0 && spec.nodes.length > 0 ? laneLayout(spec, sizes, pos, useManual) : null
+  // Swimlanes: the lanes of a zone are laid out as one block of their own (lanes outside any zone
+  // make a page-level block). Each block is laid out by laneLayout, moved to where the automatic
+  // layout had its nodes, and then travels with its zone like any other member: zone placement
+  // (at) moves it, and the zone box wraps its bands. Nodes of a block are "locked": the steps
+  // below (pinning, straightening, eviction ...) leave them where the lane layout put them.
+  const locked = new Set()
+  const blockLanes = []
+  const phantoms = []
+  const problems = []
+  const blocks = spec.lanes.length ? laneBlocks(spec) : new Map()
+  blocks.forEach((b, key) => {
+    if (b.nodes.length === 0) return
+    b.nodes.forEach((n) => locked.add(n.id))
+    const ids = new Set(b.nodes.map((n) => n.id))
+    const bspec = {
+      ...spec,
+      lanes: b.lanes,
+      nodes: b.nodes,
+      edges: spec.edges.filter((e) => ids.has(e.from) && ids.has(e.to)),
+      pool: blocks.size === 1 || key === '' ? spec.pool : '',
+    }
+    const r = laneLayout(bspec, sizes, pos, useManual)
+    problems.push(...r.problems)
+    const rects = r.laneNodes.map((n) => [n.position.x, n.position.y, n.position.x + n.data.w, n.position.y + n.data.h])
+    const L = Math.min(...rects.map((q) => q[0]))
+    const T = Math.min(...rects.map((q) => q[1]))
+    const R = Math.max(...rects.map((q) => q[2]))
+    const B = Math.max(...rects.map((q) => q[3]))
+    // Start where the automatic layout had this block's nodes (top-left corner).
+    const dx = Math.min(...b.nodes.map((n) => pos.get(n.id).x - sizes.get(n.id)[0] / 2)) - L
+    const dy = Math.min(...b.nodes.map((n) => pos.get(n.id).y - sizes.get(n.id)[1] / 2)) - T
+    r.placed.forEach((p, id) => {
+      const [w, h] = sizes.get(id)
+      pos.set(id, { x: p.x + dx + w / 2, y: p.y + dy + h / 2 })
+    })
+    const info = { key, nodes: r.laneNodes.map((n) => ({ ...n, position: { x: n.position.x + dx, y: n.position.y + dy }, data: { ...n.data, zid: key } })) }
+    if (key) {
+      // The bands count as a member of the zone, so the zone is placed and sized to include them.
+      const id = `~lanes:${key}`
+      const size = [R - L, B - T]
+      phantoms.push({ id, zone: key, type: 'note', net: false, phantom: true })
+      sizes.set(id, size)
+      lsz.set(id, size)
+      pos.set(id, { x: L + dx + size[0] / 2, y: T + dy + size[1] / 2 })
+      locked.add(id)
+      info.probe = id
+    } else info.probe = b.nodes[0].id
+    info.start = { x: pos.get(info.probe).x, y: pos.get(info.probe).y }
+    blockLanes.push(info)
+  })
+
+  const spec2 = phantoms.length ? { ...spec, nodes: [...spec.nodes, ...phantoms] } : spec
+  compactRanks(spec2, sizes, pos, locked)
+  straighten(spec2, lsz, pos, locked)
+  if (useManual) pinToGrid(spec2, sizes, lsz, pos, locked)
+  evictFromZones(spec2, sizes, pos, locked)
+  sizes = alignFanOuts(spec2, sizes, pos, locked)
+
+  // Whatever moved a block (its zone being placed) moves its lane bands the same way.
+  const laneNodes = []
+  blockLanes.forEach((info) => {
+    const dx = pos.get(info.probe).x - info.start.x
+    const dy = pos.get(info.probe).y - info.start.y
+    info.nodes.forEach((n) => laneNodes.push({ ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }))
+  })
 
   const shapeNodes = spec.nodes.map((n) => {
     const [w, h] = sizes.get(n.id)
     const p = pos.get(n.id)
-    let position = { x: p.x - w / 2, y: p.y - h / 2 }
-    if (lanes) position = lanes.placed.get(n.id)
+    const position = { x: p.x - w / 2, y: p.y - h / 2 }
     return {
       id: n.id,
       type: 'shape',
@@ -944,10 +1009,41 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
     labelBgBorderRadius: 6,
   }))
 
-  const zones = makeZones(spec, shapeNodes)
-  const all = [...(lanes ? lanes.laneNodes : []), ...zones.nodes, ...shapeNodes]
+  const zones = makeZones(spec, shapeNodes, laneNodes)
+  const all = [...laneNodes, ...zones.nodes, ...shapeNodes]
   const routed = routeFor(spec, all, edges)
-  return { nodes: routed.nodes, edges: routed.edges, problems: [...(lanes ? lanes.problems : []), ...zones.problems] }
+  return { nodes: routed.nodes, edges: routed.edges, problems: [...problems, ...zones.problems] }
+}
+
+// Groups the lanes by the zone they sit in ('' = not in a zone) and says which block each node
+// belongs to: its lane's block; else the nearest zone around it that has lanes (it goes in that
+// block's first lane); else, if it is in some other zone, none (it is laid out freely); else, if
+// the page has lanes of its own, the page-level block.
+function laneBlocks(spec) {
+  const blocks = new Map()
+  spec.lanes.forEach((l) => {
+    const key = l.zone || ''
+    if (!blocks.has(key)) blocks.set(key, { lanes: [], nodes: [] })
+    blocks.get(key).lanes.push(l)
+  })
+  const laneById = new Map(spec.lanes.map((l) => [l.id, l]))
+  const parentOf = new Map(spec.zones.map((z) => [z.id, z.parent]))
+  spec.nodes.forEach((n) => {
+    let key = null
+    const lane = laneById.get(n.lane)
+    if (lane) key = lane.zone || ''
+    else {
+      for (let z = n.zone, k = 0; z && k < 50; z = parentOf.get(z), k++) {
+        if (blocks.has(z)) {
+          key = z
+          break
+        }
+      }
+      if (key === null && !n.zone && blocks.has('')) key = ''
+    }
+    if (key !== null) blocks.get(key).nodes.push(n)
+  })
+  return blocks
 }
 
 // ---------------------------------------------------------------------------------------
