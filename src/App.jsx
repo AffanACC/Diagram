@@ -92,7 +92,7 @@ function Flow() {
       fitViewOptions={{ padding: 0.15 }}
       minZoom={0.1}
       maxZoom={2.5}
-      colorMode="system"
+      colorMode="light"
       proOptions={{ hideAttribution: true }}
     >
       <Background gap={24} size={1.2} color="var(--border)" />

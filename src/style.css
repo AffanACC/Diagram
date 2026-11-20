@@ -14,25 +14,6 @@
   --shadow: 0 1px 2px rgba(20, 30, 45, 0.08), 0 4px 10px rgba(20, 30, 45, 0.06);
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #11151b;
-    --card: #1b222b;
-    --border: #3a4553;
-    --text: #e6ebf1;
-    --muted: #9aa6b4;
-    --edge: #8894a6;
-    --accent: #5cb8d6;
-    --accent-bg: #163039;
-    --warn: #c79a2e;
-    --warn-bg: #362d14;
-    --data: #6f8fe0;
-    --data-bg: #1a2640;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.35);
-    color-scheme: dark;
-  }
-}
-
 html,
 body,
 #root {
@@ -268,6 +249,11 @@ body,
 }
 
 /* ---- React Flow tweaks ---- */
+/* Always light, whatever the OS theme: React Flow 13 otherwise follows "light dark". */
+.react-flow {
+  color-scheme: light;
+  --xy-background-color: var(--bg);
+}
 .react-flow__arrowhead polyline {
   stroke: var(--edge) !important;
   fill: var(--edge) !important;

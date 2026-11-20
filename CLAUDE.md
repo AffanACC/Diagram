@@ -53,7 +53,7 @@ compute coordinates. Only set `x`/`y` on a node if the user asks for a specific 
 
 ## Changing the viewer itself (rare: new frame, new style, new feature)
 Source is `src/` (App.jsx, ShapeNode.jsx, spec.js, layout.js, style.css). Colours are CSS
-variables at the top of `src/style.css` (light + dark). After editing, rebuild once with
+variables at the top of `src/style.css`. The viewer is always light mode, whatever the OS theme. After editing, rebuild once with
 `pnpm run build:viewer`, which rewrites `template/index.html` (committed), then re-run make.
 
 ## Tooling (Windows)
