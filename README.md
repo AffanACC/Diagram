@@ -12,7 +12,23 @@ pnpm run make             # all diagrams/*.html -> out/*.html
 node scripts/make.mjs diagrams/sample.html   # just one
 ```
 
-Open `out/sample.html` by double-clicking it. See `CLAUDE.md` for the source format.
+Open `out/sample.html` by double-clicking it, or browse everything at
+**http://localhost:47831** (a small read-only server that starts at sign-in; see below).
+See `CLAUDE.md` for the source format.
+
+## Always-on server
+
+`scripts/install-autostart.ps1` registers a per-user scheduled task, `DiagramServer`, that runs
+`scripts/serve.mjs` hidden at every sign-in and restarts it if it stops. It listens on
+127.0.0.1:47831 only, never writes files, and serves only `out/*.html`.
+
+```powershell
+Start-ScheduledTask -TaskName DiagramServer      # start now
+Stop-ScheduledTask  -TaskName DiagramServer      # stop
+scripts\uninstall-autostart.ps1                  # remove it
+```
+
+It runs while you are signed in and the laptop is awake.
 
 The dropdown at the top left switches between diagrams: it remembers file paths only (in the
 browser, never the diagram content) and opens a file when you click it. **Add existing file…**

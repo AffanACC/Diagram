@@ -76,8 +76,16 @@ variables at the top of `src/style.css`. The viewer is always light mode, whatev
 ## Tooling (Windows)
 Node, Git and pnpm are installed. If a tool is not found in a session, call it by full path
 (`C:\Program Files\nodejs\node.exe`, `%APPDATA%\npm\pnpm.cmd`) or refresh PATH first.
-Preview with `node scripts/serve.mjs` (127.0.0.1 only; port 4173); double-clicking the HTML
-also works. Git has no identity configured, so commit with
+Always-on server: the scheduled task `DiagramServer` (per user, hidden, starts at sign-in,
+restarts on failure) runs `scripts/serve.mjs`, so `http://localhost:47831` lists and serves
+every `out/*.html`. It is read-only, bound to 127.0.0.1, and sends a Content-Security-Policy
+that blocks any external request, so do not add anything to diagrams that needs the network.
+After `make`, new or changed diagrams show up at once (no restart; files are read per
+request). Change `scripts/serve.mjs` -> restart with `Stop-ScheduledTask DiagramServer;
+Start-ScheduledTask DiagramServer`. Install/remove: `scripts/install-autostart.ps1` /
+`scripts/uninstall-autostart.ps1`. Double-clicking an `out/*.html` also works without the
+server. When opened from the server the dropdown lists the server's diagrams; when opened
+from disk it uses the saved-paths list. Git has no identity configured, so commit with
 `git -c user.name=diagram-local -c user.email=noreply@localhost commit ...`.
 
 ## Style rules
