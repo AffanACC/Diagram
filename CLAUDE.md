@@ -85,8 +85,10 @@ request). Change `scripts/serve.mjs` -> restart with `Stop-ScheduledTask Diagram
 Start-ScheduledTask DiagramServer`. Install/remove: `scripts/install-autostart.ps1` /
 `scripts/uninstall-autostart.ps1`. Double-clicking an `out/*.html` also works without the
 server. When opened from the server the dropdown lists the server's diagrams; when opened
-from disk it uses the saved-paths list. Git has no identity configured, so commit with
-`git -c user.name=diagram-local -c user.email=noreply@localhost commit ...`.
+from disk it uses the saved-paths list. Commits use this repo's own git identity (see
+`git config user.name` / `user.email`); the history was rewritten once to carry it, so do not
+reintroduce a placeholder identity. The repo is pushed to GitHub (origin); only push when the
+user asks.
 
 ## Style rules
 Calm look: one accent colour, neutral cards, yellow for decisions, blue for data. No emoji.
