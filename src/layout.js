@@ -247,14 +247,20 @@ function pinToGrid(spec, sizes, lsz, pos) {
   // 4. Everything else that ended up on top of a pinned node slides clear.
   const pinnedIds = new Set(pinnedNodes.filter((n) => n.at.row).map((n) => n.id))
   const cross = spec.direction === 'TB' ? 'x' : 'y'
+  const zoneOfNode = new Map(spec.nodes.map((n) => [n.id, n.zone]))
   const overlaps = (id) =>
     spec.nodes.some((o) => {
-      if (o.id === id) return false
+      // Only a pinned node can have been put on top of this one; how unpinned nodes sit relative
+      // to each other is the automatic layout's business and is left as it is.
+      if (o.id === id || !(o.at && o.at.col)) return false
       const a = pos.get(o.id)
       const b = pos.get(id)
+      // Zone padding is only needed between neighbours in the same zone; nodes of different
+      // zones only must not touch (zones are kept apart by their own placement).
+      const k = zoneOfNode.get(o.id) === zoneOfNode.get(id) ? lsz : sizes
       return (
-        Math.abs(a.x - b.x) < (lsz.get(o.id)[0] + lsz.get(id)[0]) / 2 + 16 &&
-        Math.abs(a.y - b.y) < (lsz.get(o.id)[1] + lsz.get(id)[1]) / 2 + 16
+        Math.abs(a.x - b.x) < (k.get(o.id)[0] + k.get(id)[0]) / 2 + 16 &&
+        Math.abs(a.y - b.y) < (k.get(o.id)[1] + k.get(id)[1]) / 2 + 16
       )
     })
   spec.nodes
@@ -483,7 +489,7 @@ function evictFromZones(spec, sizes, pos) {
     const T = Math.min(...rs.map((r) => r.t)) - pad
     const B = Math.max(...rs.map((r) => r.b)) + pad
     spec.nodes
-      .filter((n) => !inside.has(n.id))
+      .filter((n) => !inside.has(n.id) && !(n.at && n.at.row)) // a node pinned with at stays where it was put
       .forEach((n) => {
         const r = rectOf(n.id)
         if (!(r.l < R && L < r.r && r.t < B && T < r.b)) return
@@ -794,6 +800,45 @@ function alignFanOuts(spec, sizes, pos) {
   return out
 }
 
+// The automatic layout leaves more room between columns than needed: nodes in zones are laid out
+// larger (so zone boxes fit), and that padding is counted again in every gap. Here the columns
+// (ranks) are spaced again from the real node sizes: each column starts one gap after the widest
+// node of the one before, or a little more when a label sits on an edge between them. The first
+// column stays put. Nothing moves across the flow, so rows are unchanged.
+function compactRanks(spec, sizes, pos) {
+  const flow = spec.nodes.filter((n) => !n.net)
+  // Ontology nodes are not compacted; if any of them is free (no `at`), leave the layout alone.
+  if (flow.length === 0 || spec.nodes.some((n) => n.net && !(n.at && n.at.col))) return
+  const horizontal = spec.direction !== 'TB'
+  const m = horizontal ? 'x' : 'y'
+  const d = horizontal ? 0 : 1
+  const { gx } = gapsOf(new Map(flow.map((n) => [n.id, sizes.get(n.id)])), false)
+  const gap = horizontal ? gx : Math.max(32, gx - 24)
+  const sorted = [...flow].sort((a, b) => pos.get(a.id)[m] - pos.get(b.id)[m])
+  const cols = []
+  sorted.forEach((n) => {
+    const c = cols[cols.length - 1]
+    if (c && Math.abs(pos.get(n.id)[m] - c.centre) <= 2) c.ids.push(n.id)
+    else cols.push({ centre: pos.get(n.id)[m], ids: [n.id] })
+  })
+  const colOf = new Map()
+  cols.forEach((c, i) => c.ids.forEach((id) => colOf.set(id, i)))
+  const need = cols.map(() => gap)
+  spec.edges.forEach((e) => {
+    if (!e.label || !colOf.has(e.from) || !colOf.has(e.to)) return
+    const a = colOf.get(e.from)
+    const b = colOf.get(e.to)
+    if (b === a + 1) need[b] = Math.max(need[b], e.label.length * 7 + 20 + 2 * 24)
+  })
+  let right = 0
+  cols.forEach((c, i) => {
+    const half = Math.max(...c.ids.map((id) => sizes.get(id)[d] / 2))
+    const centre = i === 0 ? c.centre : Math.min(c.centre, right + need[i] + half)
+    c.ids.forEach((id) => (pos.get(id)[m] = centre))
+    right = centre + half
+  })
+}
+
 // Spec + measured sizes -> React Flow nodes/edges. Positions come from dagre unless a node
 // has x/y (set by "Download HTML" after you drag things) and useManual is true. With lanes,
 // the lane layout always decides positions.
@@ -846,6 +891,7 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
   layout(g)
   const pos = new Map(spec.nodes.map((n) => [n.id, g.node(n.id)]))
   if (spec.lanes.length === 0) {
+    compactRanks(spec, sizes, pos)
     straighten(spec, lsz, pos)
     if (useManual) pinToGrid(spec, sizes, lsz, pos)
     evictFromZones(spec, sizes, pos)
