@@ -101,10 +101,12 @@ export function gridSize(sizes, roomy = false) {
 // not stretch everything else. A half step (2.5) is midway between columns 2 and 3. Returns
 // functions giving the centre of a column / row, measured from the left / top edge of column /
 // row 1.
-function makeTracks(items, sizes, roomy) {
-  const { gx, gy } = gapsOf(new Map(items.map((n) => [n.id, sizes.get(n.id)])), roomy)
+function makeTracks(items, sizes, roomy, statNodes = items) {
+  // The typical size and the gaps come from ALL the nodes of the scope (`statNodes`), not just the
+  // pinned ones, so pinning one more node never moves the nodes that are already pinned.
+  const { gx, gy } = gapsOf(new Map(statNodes.map((n) => [n.id, sizes.get(n.id)])), roomy)
   const build = (key, dim, gap) => {
-    const typical = snap(median(items.map((n) => sizes.get(n.id)[dim])))
+    const typical = snap(median(statNodes.map((n) => sizes.get(n.id)[dim])))
     const widest = new Map()
     items.forEach((n) => {
       const v = n.at[key]
@@ -189,7 +191,8 @@ function pinToGrid(spec, sizes, lsz, pos, locked = new Set()) {
     if (!trackCache.has(key)) {
       const items = pinnedNodes.filter((n) => (scope ? n.zone === scope : !(n.zone && origin.get(n.zone))))
       const roomy = scope ? spec.zones.find((z) => z.id === scope).net : spec.diagramType === 'ontology'
-      trackCache.set(key, makeTracks(items, sizes, roomy))
+      const everyone = spec.nodes.filter((n) => !n.phantom && (scope ? n.zone === scope : !(n.zone && origin.get(n.zone))))
+      trackCache.set(key, makeTracks(items, sizes, roomy, everyone.length ? everyone : items))
     }
     return trackCache.get(key)
   }
@@ -381,6 +384,93 @@ export function snapToGrid(shapeNodes, spec = { zones: [], nodes: [] }) {
     zs.forEach((z) => zoneCell.set(z.id, { col: cols.get(z.id), row: rows.get(z.id) }))
   })
   return { nodes: cells, zones: zoneCell }
+}
+
+// For "Download HTML": which nodes got a new `at` because they were dragged, so that the saved
+// copy lays out the way the viewer showed it. Only nodes that moved from where the viewer put
+// them (`initial`: id -> {x, y}) get a cell; every other node keeps what its source says, so a
+// copy without drags is identical to the source. In a scope (a zone, or the page) that has
+// unmoved pinned nodes, a moved node gets the nearest cell of that scope's own column / row
+// layout (the same one pinToGrid uses). In a scope with none, every node of the scope is pinned
+// (as snapToGrid does), since there is nothing to anchor a single node to.
+// Nodes in swimlane blocks are never rewritten. Returns Map id -> {col, row}.
+export function cellsForMoved(shapeNodes, spec, initial) {
+  const out = new Map()
+  const byId = new Map(shapeNodes.map((n) => [n.id, n]))
+  const sizes = new Map(shapeNodes.map((n) => [n.id, [n.data.w, n.data.h]]))
+  const lockedIds = new Set()
+  if (spec.lanes.length) laneBlocks(spec).forEach((b) => b.nodes.forEach((n) => lockedIds.add(n.id)))
+  const moved = new Set(
+    shapeNodes
+      .filter((n) => {
+        const i = initial.get(n.id)
+        return i && (Math.abs(n.position.x - i.x) > 2 || Math.abs(n.position.y - i.y) > 2)
+      })
+      .map((n) => n.id),
+  )
+  if (moved.size === 0) return out
+  const uniform = snapToGrid(shapeNodes, spec).nodes
+  const zt = zoneTree(spec)
+  const liveZones = new Set(spec.zones.filter((z) => zt.members(z.id).some((id) => byId.has(id))).map((z) => z.id))
+  const scopes = new Map()
+  spec.nodes
+    .filter((n) => byId.has(n.id) && !lockedIds.has(n.id))
+    .forEach((n) => {
+      const s = n.zone && liveZones.has(n.zone) ? n.zone : ''
+      if (!scopes.has(s)) scopes.set(s, [])
+      scopes.get(s).push(n)
+    })
+  const centre = (id) => {
+    const n = byId.get(id)
+    return { x: n.position.x + n.data.w / 2, y: n.position.y + n.data.h / 2 }
+  }
+  scopes.forEach((nodes, scope) => {
+    const mv = nodes.filter((n) => moved.has(n.id))
+    if (mv.length === 0) return
+    const roomy = scope ? spec.zones.find((z) => z.id === scope).net : spec.diagramType === 'ontology'
+    const refs = nodes.filter((n) => !moved.has(n.id) && n.at && n.at.col && n.at.row)
+    const zone = scope ? spec.zones.find((z) => z.id === scope) : null
+    // A zone that is itself placed with `at` has a frame we cannot recover here: pin its nodes all.
+    if (refs.length === 0 && zone && zone.at) {
+      nodes.forEach((n) => out.set(n.id, uniform.get(n.id)))
+      return
+    }
+    const prov = mv.map((n) => ({ id: n.id, at: uniform.get(n.id) }))
+    // The same tracks pinToGrid will use on reload: every pinned node of the scope (the ones that
+    // did not move keep their authored cells), sized from all the scope's nodes.
+    const keep = nodes.filter((n) => !moved.has(n.id) && n.at && n.at.col)
+    const items = [...keep, ...prov]
+    const t = makeTracks(items, sizes, roomy, nodes)
+    let ox
+    let oy
+    if (refs.length) {
+      // Anchor on a pinned node that did not move: it sits at origin + its own cell.
+      const c0 = centre(refs[0].id)
+      ox = c0.x - t.x(refs[0].at.col)
+      oy = c0.y - t.y(refs[0].at.row)
+    } else if (!scope) {
+      // Page frame: cell 1,1 is centred on 0,0 (see pinToGrid).
+      ox = -t.x(1)
+      oy = -t.y(1)
+    } else {
+      // Unpinned zone: its grid starts at the top-left of where the viewer put its members.
+      const rs = zt.members(scope).map((id) => initial.get(id)).filter(Boolean)
+      ox = Math.min(...rs.map((p) => p.x))
+      oy = Math.min(...rs.map((p) => p.y))
+    }
+    const maxCol = Math.max(...items.map((n) => n.at.col)) + 1
+    const maxRow = Math.max(...items.map((n) => n.at.row || 1)) + 1
+    const nearest = (f, target, max) => {
+      let best = 1
+      for (let v = 1; v <= max; v += 0.5) if (Math.abs(f(v) - target) < Math.abs(f(best) - target)) best = v
+      return best
+    }
+    mv.forEach((n) => {
+      const c = centre(n.id)
+      out.set(n.id, { col: nearest(t.x, c.x - ox, maxCol), row: nearest(t.y, c.y - oy, maxRow) })
+    })
+  })
+  return out
 }
 
 // Keeps diagrams tidy without anyone choosing sizes: nodes of the same type whose measured
@@ -669,7 +759,7 @@ function laneLayout(spec, sizes, pos, useManual) {
   const shift = POOL_W + LABEL_W + 48 - minX
   // A node with at="col" is placed on the column grid (each column as wide as the widest node
   // pinned to it); the others follow the automatic layout.
-  const tracks = makeTracks(spec.nodes.filter((n) => n.at && n.at.col), sizes, false)
+  const tracks = makeTracks(spec.nodes.filter((n) => n.at && n.at.col), sizes, false, spec.nodes)
   const x0Of = (n) =>
     useManual && n.at
       ? POOL_W + LABEL_W + 48 + tracks.x(n.at.col) - sizes.get(n.id)[0] / 2
@@ -1019,7 +1109,7 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
 // belongs to: its lane's block; else the nearest zone around it that has lanes (it goes in that
 // block's first lane); else, if it is in some other zone, none (it is laid out freely); else, if
 // the page has lanes of its own, the page-level block.
-function laneBlocks(spec) {
+export function laneBlocks(spec) {
   const blocks = new Map()
   spec.lanes.forEach((l) => {
     const key = l.zone || ''

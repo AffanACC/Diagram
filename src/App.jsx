@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -20,7 +20,7 @@ import { readSpec } from './spec.js'
 import ZoneNode from './ZoneNode.jsx'
 import FloatingEdge from './FloatingEdge.jsx'
 import { onLocalServer } from './files.js'
-import { measureNodes, buildGraph, routeFor, refreshZones, snapToGrid } from './layout.js'
+import { measureNodes, buildGraph, routeFor, refreshZones, cellsForMoved, laneBlocks } from './layout.js'
 
 const nodeTypes = { shape: ShapeNode, lane: LaneNode, zone: ZoneNode }
 const edgeTypes = { routed: RoutedEdge, floating: FloatingEdge }
@@ -31,6 +31,9 @@ const isServed = onLocalServer
 
 function Flow() {
   const [spec, setSpec] = useState(readSpec)
+  // Where the viewer put each node (and whether that was the saved layout or a reset): "Download
+  // HTML" compares against this to find what was dragged.
+  const baseline = useRef(null)
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [sizes, setSizes] = useState(null)
@@ -55,6 +58,7 @@ function Flow() {
     measureNodes(spec.nodes).then((s) => {
       if (cancelled) return
       const g = buildGraph(spec, s)
+      baseline.current = { manual: true, pos: new Map(g.nodes.filter((n) => n.type === 'shape').map((n) => [n.id, { x: n.position.x, y: n.position.y }])) }
       setSizes(s)
       setLayoutProblems(g.problems)
       setNodes(g.nodes)
@@ -81,6 +85,7 @@ function Flow() {
   const resetLayout = useCallback(() => {
     if (!sizes) return
     const g = buildGraph(spec, sizes, { useManual: false })
+    baseline.current = { manual: false, pos: new Map(g.nodes.filter((n) => n.type === 'shape').map((n) => [n.id, { x: n.position.x, y: n.position.y }])) }
     setNodes(g.nodes)
     setEdges(g.edges)
     refit()
@@ -93,21 +98,27 @@ function Flow() {
     const root = clone.querySelector('#root')
     if (root) root.innerHTML = ''
     const tpl = clone.querySelector('template#diagram-source')
-    // Swimlane layouts decide positions themselves, so only other diagrams get grid cells.
-    // Nodes inside a zone get cells in that zone's grid; each zone gets the cell where it starts.
-    const cells = spec.lanes.length
-      ? { nodes: new Map(), zones: new Map() }
-      : snapToGrid(getNodes().filter((n) => n.type === 'shape'), spec)
+    // The saved copy must lay out like what is on screen. Positions are kept as the source says
+    // (`at`), except: after "Reset layout" the pins are dropped (the reset view had none), and a
+    // node that was dragged gets the cell it was dropped in (see cellsForMoved). Nodes in
+    // swimlanes keep their lane column.
+    const base = baseline.current
+    const resetView = base && !base.manual
+    const laneIds = new Set()
+    if (spec.lanes.length) laneBlocks(spec).forEach((b) => b.nodes.forEach((n) => laneIds.add(n.id)))
+    const specForCells = resetView
+      ? { ...spec, nodes: spec.nodes.map((n) => (laneIds.has(n.id) ? n : { ...n, at: undefined })), zones: spec.zones.map((z) => ({ ...z, at: undefined })) }
+      : spec
+    const cells = base ? cellsForMoved(getNodes().filter((n) => n.type === 'shape'), specForCells, base.pos) : new Map()
     tpl.content.querySelectorAll('node').forEach((el) => {
-      const c = cells.nodes.get(el.getAttribute('id'))
+      const id = el.getAttribute('id')
       el.removeAttribute('x')
       el.removeAttribute('y')
+      if (resetView && !laneIds.has(id)) el.removeAttribute('at')
+      const c = cells.get(id)
       if (c) el.setAttribute('at', `${c.col},${c.row}`)
     })
-    tpl.content.querySelectorAll('zone').forEach((el, i) => {
-      const c = cells.zones.get(el.getAttribute('id') || `zone-${i + 1}`)
-      if (c) el.setAttribute('at', `${c.col},${c.row}`)
-    })
+    if (resetView) tpl.content.querySelectorAll('zone').forEach((el) => el.removeAttribute('at'))
     const html = '<!doctype html>\n' + clone.outerHTML
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
     const url = URL.createObjectURL(blob)
