@@ -1,4 +1,14 @@
 node_modules/
-out/
 dist/
 *.log
+
+# The repo is the tool, not the user's work: diagrams, generated pages and specs may hold
+# client information and must never be committed. Only the examples are tracked.
+out/
+specs/
+diagrams/*
+!diagrams/example-*.html
+!diagrams/sample.html
+!diagrams/images/
+diagrams/images/*
+!diagrams/images/form-mock.svg

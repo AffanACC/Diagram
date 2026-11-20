@@ -1,19 +1,25 @@
+/* Tokens: neutrals and accents from the Tailwind CSS default palette (MIT):
+   slate-50/300/400/500/900, indigo-50/600, amber-50/600, sky-50/600.
+   Fonts stay on the system stack (no web fonts, no network). */
 :root {
-  --bg: #f4f6f9;
+  --bg: #f8fafc;
   --card: #ffffff;
-  --border: #c5cfdb;
-  --text: #1b2430;
-  --muted: #5b6776;
-  --edge: #738094;
-  --accent: #1f6f8b;
-  --accent-bg: #e1f0f5;
-  --warn: #cf9b2a;
-  --warn-bg: #fcf1d6;
-  --data: #5a78c2;
-  --data-bg: #e6edfa;
-  --shadow: 0 1px 2px rgba(20, 30, 45, 0.08), 0 4px 10px rgba(20, 30, 45, 0.06);
+  --border: #cbd5e1;
+  --text: #0f172a;
+  --muted: #64748b;
+  --edge: #94a3b8;
+  --accent: #4f46e5;
+  --accent-bg: #eef2ff;
+  --warn: #d97706;
+  --warn-bg: #fffbeb;
+  --data: #0284c7;
+  --data-bg: #f0f9ff;
+  --shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.06);
+  --radius: 12px;
+  --stroke: 1.25px;
   color-scheme: light;
 }
+
 html,
 body,
 #root {
@@ -32,8 +38,8 @@ body,
   align-items: center;
   justify-content: center;
   background: var(--card);
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
+  border: var(--stroke) solid var(--border);
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
   cursor: grab;
   user-select: none;
@@ -59,7 +65,7 @@ body,
 }
 .shape .bg * {
   vector-effect: non-scaling-stroke;
-  stroke-width: 1.5px;
+  stroke-width: var(--stroke);
   stroke-linejoin: round;
 }
 
@@ -246,6 +252,252 @@ body,
   border-left: 3px solid var(--border);
   color: var(--muted);
   text-align: left;
+}
+
+/* ---- shape plumbing ---- */
+.shape .inner {
+  display: contents;
+}
+.shape .bg {
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.1));
+}
+
+/* ISO 5807 outlines drawn as stretchable SVG: neutral fill and line */
+.shape-io,
+.shape-document,
+.shape-manual,
+.shape-prep,
+.shape-offpage {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.shape-io .bg *,
+.shape-document .bg *,
+.shape-manual .bg *,
+.shape-prep .bg *,
+.shape-offpage .bg * {
+  fill: var(--card);
+  stroke: var(--edge);
+}
+.shape-io .text {
+  padding: 10px 34px;
+}
+.shape-manual .text,
+.shape-prep .text {
+  padding: 10px 30px;
+}
+.shape-offpage .text {
+  padding: 10px 18px 26px;
+}
+.shape-document .text {
+  padding: 10px 16px 24px;
+}
+
+/* predefined process: a card with two inner vertical lines */
+.shape-subprocess {
+  background-image: linear-gradient(var(--border), var(--border)), linear-gradient(var(--border), var(--border));
+  background-size: var(--stroke) 100%;
+  background-repeat: no-repeat;
+  background-position: 12px 0, calc(100% - 12px) 0;
+}
+.shape-subprocess .text {
+  padding: 10px 28px;
+}
+
+/* on-page connector */
+.shape-connector {
+  border-radius: 50%;
+  min-width: 0;
+  min-height: 0;
+}
+.shape-connector .text {
+  padding: 0;
+}
+.shape-connector .content {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* BPMN: label sits under a fixed symbol */
+.shape-event,
+.shape-gateway,
+.shape-dataobject {
+  flex-direction: column;
+  justify-content: flex-start;
+  background: none;
+  border: none;
+  box-shadow: none;
+  min-width: 0;
+  min-height: 0;
+}
+.shape-event .text,
+.shape-gateway .text,
+.shape-dataobject .text {
+  padding: 5px 4px 0;
+}
+.shape-event .content,
+.shape-gateway .content,
+.shape-dataobject .content {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.glyph {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  border: var(--stroke) solid var(--accent);
+}
+.glyph-end {
+  border-width: 4px;
+}
+.glyph-intermediate {
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 4.5px var(--accent);
+}
+.glyph-svg {
+  flex: none;
+  overflow: visible;
+}
+.glyph-svg * {
+  vector-effect: non-scaling-stroke;
+  stroke-width: var(--stroke);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.glyph-svg.gateway polygon {
+  fill: var(--warn-bg);
+  stroke: var(--warn);
+}
+.glyph-svg.gateway .sym {
+  fill: none;
+  stroke: var(--warn);
+  stroke-width: 2px;
+}
+.glyph-svg.dataobject path {
+  fill: var(--card);
+  stroke: var(--edge);
+}
+
+/* DFD (Gane-Sarson): process with an id band, open-ended data store, external entity */
+.shape-dfd-process {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.shape-dfd-process .text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+}
+.idband {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-align: left;
+  background: var(--bg);
+  border-bottom: var(--stroke) solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.shape-datastore {
+  border-radius: 0;
+  border-right: none;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+.idcell {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  border-right: var(--stroke) solid var(--border);
+}
+.shape-datastore .text {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+}
+.shape-entity {
+  border: 2px solid var(--muted);
+  border-radius: 4px;
+}
+.shape-entity .content {
+  font-weight: 700;
+}
+
+/* assumed: drawn from an assumption, not something the user said */
+.shape.assumed {
+  border-style: dashed;
+}
+.shape.assumed .bg * {
+  stroke-dasharray: 5 4;
+}
+.shape.assumed .glyph {
+  border-style: dashed;
+}
+.shape.assumed::after {
+  content: 'assumed';
+  position: absolute;
+  top: -9px;
+  right: 10px;
+  z-index: 2;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--muted);
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+}
+
+/* ---- swimlanes ---- */
+.lane {
+  box-sizing: border-box;
+  display: flex;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+.lane.odd {
+  background: rgba(241, 245, 249, 0.85);
+}
+.lane-label {
+  flex: none;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border-right: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+.lane.pool {
+  background: var(--card);
+  border-color: var(--edge);
+}
+.lane.pool .lane-label {
+  width: 100%;
+  border-right: none;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--text);
 }
 
 /* ---- React Flow tweaks ---- */

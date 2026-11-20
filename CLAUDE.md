@@ -1,94 +1,33 @@
-# Diagram viewer: instructions for Claude
+# Diagram viewer: repo notes for Claude
 
-Purpose: turn a plain-HTML diagram source into ONE self-contained HTML file with an infinite,
-pan/zoom canvas and draggable nodes (React Flow). Fully offline: no CDN, no network at view
-time. Client data stays on this laptop, so never add CDN links, web fonts, analytics or
-external fetches. The user only opens the HTML; you do all the work.
+Offline diagram viewer: a small HTML source file becomes one self-contained, pannable page
+(React Flow). Client information stays on this laptop: no CDN, no web fonts, no external
+requests, no Artifacts. The user only views and shares; Claude does the editing.
 
-## Per diagram (the normal case, no rebuild)
-1. Write or edit `diagrams/<name>.html` (format below). Put images in `diagrams/images/`.
-2. Run `node scripts/make.mjs diagrams/<name>.html` (or `pnpm run make` for all).
-3. Output: `out/<name>.html`. Tell the user the path. Do not publish it as an Artifact.
+## Rules live in skills (read them, do not duplicate them here)
+Source: `.claude\skills\` in this repo; installed to `%USERPROFILE%\.claude\skills\` by
+`scripts\install-skills.ps1` (re-run after editing a skill) so every session finds them.
+- `diagram-format`: the HTML source format, node types, `at` grid placement, where files go, `make`
+- `diagram-conversation`: stick to the conversation, ask only when it matters, vague prompts, short replies
+- `diagram-standards`: flowchart (ISO 5807), process flow (BPMN swimlane), data flow (Gane-Sarson) rules and checklists
+- `diagram-styling`: slate tokens, what colours mean, content rules, how to change the theme
+- `prototype-spec`: the paste-anywhere spec
+Examples: `diagrams\example-flowchart.html`, `example-process-flow.html`, `example-dfd.html`, `sample.html`.
 
-Layout is automatic (dagre) and every node is measured from its real content, so never
-compute coordinates. Only set `x`/`y` on a node if the user asks for a specific placement.
+## Working on the viewer itself (only when asked)
+Source is `src\`: `spec.js` (reads the HTML source), `shapes.js` (node types and their markup),
+`layout.js` (measuring, harmonised sizes, dagre layout, straightening, swimlanes, grid, edge
+routing), `ShapeNode.jsx`, `LaneNode.jsx`, `RoutedEdge.jsx`, `FileMenu.jsx`, `App.jsx`,
+`style.css` (tokens at the top). After editing: `pnpm run build:viewer` (rewrites the committed
+`template\index.html`), then `pnpm run make`. A change to node types or attributes must be
+reflected in the `diagram-format` skill and `reference\types.md`.
+Check layout changes on all four examples for connector crossings and connectors passing
+through nodes; the routing code is built to give none.
 
-## Source format
-```html
-<diagram title="Shown in header and tab" description="optional one-liner" direction="LR">
-  <node id="a" type="start">Request received</node>
-  <node id="b" type="card" width="300">
-    <h3>Heading</h3>
-    <p>Any HTML: paragraphs, lists, tables, code, <b>bold</b>, images.</p>
-    <img src="images/form.png">
-  </node>
-  <node id="c" type="decision"><b>OK?</b></node>
-  <node id="d" type="plain"><h4>Free text</h4><p>No frame around this.</p></node>
-  <edge from="a" to="b"></edge>
-  <edge from="b" to="c" label="optional" dashed></edge>
-</diagram>
-```
-- `direction`: `LR` (default) or `TB`.
-- Node `type` is only the frame: `start`, `end` (pill, accent), `card` (default), `decision`
-  (diamond), `data` (cylinder), `note` (dashed, muted), `plain` (no frame: just text/images).
-- Node attributes: `id` (unique, no spaces), `width` (px, default fits content up to 300),
-  `height`, `align` (`left`|`center`|`right`), `x`/`y` (fixed position).
-- Content styling is shared: `h1`-`h4`, `p`, `ul`/`ol`, `table`, `code`/`pre`, `blockquote`,
-  `small`, `img`. Do not add inline styles or colours; keep the look consistent.
-- Write edges as `<edge ...></edge>` (a self-closing `<edge/>` is also accepted by make).
-- Keep headings short; label the outgoing edges of every `decision` (Yes/No, Low/High...).
-- Images: png, jpg, gif, webp or svg, inside the project folder. make inlines them as data:
-  URIs so the output stays one file. Resize big images first (make warns above 1 MB).
-- Refused by make (client data must stay local): `<script>`, iframe/object/embed/link/meta/
-  form, `on...=` handlers, `javascript:`, CSS `@import`, and any http(s) or `//` URL in
-  src/href/url(). Plain-text URLs in paragraphs are fine.
-- Mistakes (duplicate ids, edges to missing nodes, unknown `type`) show as warnings in the
-  make output and in the diagram header.
+## Server and tooling (Windows)
+- `http://localhost:47831` is served by the scheduled task `DiagramServer` (per user, hidden, starts at sign-in, restarts on failure) running `scripts\serve.mjs`: read-only, 127.0.0.1 only, with a Content-Security-Policy that blocks any external request. New or changed diagrams show up after `make`; no restart needed. After changing `serve.mjs`: `Stop-ScheduledTask DiagramServer; Start-ScheduledTask DiagramServer`. Install/remove: `scripts\install-autostart.ps1` / `uninstall-autostart.ps1`.
+- Node, Git and pnpm are installed. If a tool is not found, call it by full path (`C:\Program Files\nodejs\node.exe`, `%APPDATA%\npm\pnpm.cmd`) or refresh PATH first.
+- Page output opens by double-click too (the dropdown then uses saved file paths instead of the server list).
 
-## In the viewer
-- Drag nodes, scroll to zoom, drag the background to pan. "Reset layout" restores auto layout.
-- "Download HTML" saves a copy of the diagram as a new `.html` file, with the current node
-  positions written back as `x`/`y`, so a layout the user arranged is kept. It downloads
-  straight from the browser, no server needed.
-
-- Top left is a dropdown showing the diagram's title. It lists saved diagram files for
-  switching between diagrams. It remembers file PATHS only (plus a display name), in the
-  browser's localStorage; diagram content is never stored. Clicking a file opens it (a
-  `file:///` link). "Add existing file…" adds another path: paste a full Windows path (quotes,
-  `/` or `file:///` are fine). When the page was opened from disk and is not listed yet, it
-  shows as "this file" with "Save to list". There is no title card; if problems exist (bad
-  edge, unknown type) a small amber "⚠ n" pill appears next to the dropdown. The list is
-  shared only between diagrams opened from disk in the same browser profile. Do not try to
-  write this list from `make`.
-- "+ New file" asks for a name and swaps the open page for an empty diagram (in memory only;
-  nothing on disk changes). The user then presses "Download HTML" to get a blank `<name>.html`
-  and later asks Claude to fill it in. To fill a downloaded blank (or to edit any downloaded
-  file): take the `<diagram ...>` element from the `<template id="diagram-source">` in that
-  file, save it as `diagrams/<name>.html`, edit it, and run make. Saved `x`/`y` on nodes are
-  the user's dragged positions: keep them unless asked to re-layout (delete them to re-layout).
-  The user only views and shares; Claude does all the editing.
-
-## Changing the viewer itself (rare: new frame, new style, new feature)
-Source is `src/` (App.jsx, ShapeNode.jsx, spec.js, layout.js, style.css). Colours are CSS
-variables at the top of `src/style.css`. The viewer is always light mode, whatever the OS theme. After editing, rebuild once with
-`pnpm run build:viewer`, which rewrites `template/index.html` (committed), then re-run make.
-
-## Tooling (Windows)
-Node, Git and pnpm are installed. If a tool is not found in a session, call it by full path
-(`C:\Program Files\nodejs\node.exe`, `%APPDATA%\npm\pnpm.cmd`) or refresh PATH first.
-Always-on server: the scheduled task `DiagramServer` (per user, hidden, starts at sign-in,
-restarts on failure) runs `scripts/serve.mjs`, so `http://localhost:47831` lists and serves
-every `out/*.html`. It is read-only, bound to 127.0.0.1, and sends a Content-Security-Policy
-that blocks any external request, so do not add anything to diagrams that needs the network.
-After `make`, new or changed diagrams show up at once (no restart; files are read per
-request). Change `scripts/serve.mjs` -> restart with `Stop-ScheduledTask DiagramServer;
-Start-ScheduledTask DiagramServer`. Install/remove: `scripts/install-autostart.ps1` /
-`scripts/uninstall-autostart.ps1`. Double-clicking an `out/*.html` also works without the
-server. When opened from the server the dropdown lists the server's diagrams; when opened
-from disk it uses the saved-paths list. Commits use this repo's own git identity (see
-`git config user.name` / `user.email`); the history was rewritten once to carry it, so do not
-reintroduce a placeholder identity. The repo is pushed to GitHub (origin); only push when the
-user asks.
-
-## Style rules
-Calm look: one accent colour, neutral cards, yellow for decisions, blue for data. No emoji.
+## Git
+The repo is the tool, not the user's work. `diagrams\`, `out\` and `specs\` are git-ignored except the examples, because they may hold client information: never force-add them. Commits use this repo's own git identity (`git config user.name` / `user.email`); do not reintroduce a placeholder. The remote `origin` is on GitHub: push only when the user asks.

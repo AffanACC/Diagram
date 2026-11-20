@@ -112,6 +112,12 @@ for (const file of files) {
       if (!ids.includes(from) || !ids.includes(to)) warnings.push(`edge ${from} -> ${to} references a missing node`)
     }
 
+    const laneIds = (markup.match(/<lane\b[^>]*>/gi) || []).map((t) => attr(t, 'id'))
+    for (const t of nodeTags) {
+      const lane = attr(t, 'lane')
+      if (lane && !laneIds.includes(lane)) warnings.push(`node "${attr(t, 'id')}" is in unknown lane "${lane}"`)
+    }
+
     const title = attr(/<diagram\b[^>]*>/i.exec(markup)[0], 'title') || name
     let html = template.replace(SOURCE_TAG, () => `<template id="diagram-source">${markup}</template>`)
     html = html.replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escapeHtml(title)}</title>`)
