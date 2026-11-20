@@ -610,13 +610,24 @@ body,
 }
 
 /* ---- React Flow tweaks ---- */
-/* Each link is drawn in an SVG with no size of its own; it only shows because overflow is
-   visible. React Flow's own rule sits in a low-priority CSS layer, so a page that displays this
-   file (a document viewer, for instance) can override it with an ordinary `svg { overflow:
-   hidden }` and clip every link and label away. This rule is not layered and wins over that. */
-.react-flow .react-flow__edges svg {
+/* Each link is drawn in an SVG with no size of its own: it falls back to a default box and shows
+   outside it only because overflow is visible. Two things can break that in a page that displays
+   this file (a document viewer, for instance), and either removes every link and label:
+   - an ordinary `svg { overflow: hidden }`, which beats React Flow's rule (it sits in a
+     low-priority CSS layer);
+   - a reset such as `svg { max-width: 100% }`, which makes the box 0 wide (100% of a zero-width
+     parent), and an <svg> with a width or height of 0 is not drawn at all.
+   This rule is not layered and uses !important, so neither can win: a fixed non-zero box with
+   overflow visible. (The marker-definitions SVG is excluded; it is meant to be 0x0.) */
+.react-flow .react-flow__edges svg:not(.react-flow__marker) {
   position: absolute !important;
   overflow: visible !important;
+  width: 300px !important;
+  height: 150px !important;
+  min-width: 300px !important;
+  min-height: 150px !important;
+  max-width: none !important;
+  max-height: none !important;
 }
 /* Links keep their thickness however far the diagram is zoomed out. A small pane (a chat
    preview, say) zooms right out, and a scaled-down 1.6px line would all but vanish. */
