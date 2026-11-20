@@ -23,8 +23,8 @@ const num = (v) => {
 }
 
 // at="3,2" = column 3, row 2 on the diagram grid (1-based, from the top left). Half steps
-// are allowed: at="2.5,2" sits between columns 2 and 3 (an offset row). "3" alone sets only
-// the column (used with swimlanes, where the lane decides the row).
+// are allowed: at="2.5,2" sits between columns 2 and 3 (an offset row). "3" alone pins only
+// the column: in swimlanes the lane decides the row, elsewhere the row stays automatic.
 function parseAt(v, id, problems) {
   if (v === null || v.trim() === '') return undefined
   const m = /^\s*(\d+(?:\.5)?)\s*(?:,\s*(\d+(?:\.5)?)\s*)?$/.exec(v)

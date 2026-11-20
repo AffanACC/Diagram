@@ -84,15 +84,16 @@ export function gridSize(sizes, roomy = false) {
 // Nodes with at="col,row" go to the middle of that cell. Automatic nodes that end up on top of
 // a pinned one slide sideways until clear.
 function pinToGrid(spec, sizes, pos) {
-  const pinned = spec.nodes.filter((n) => n.at && n.at.col && n.at.row)
+  // at="col,row" pins both; at="col" pins only the column and leaves the row to the layout.
+  const pinned = spec.nodes.filter((n) => n.at && n.at.col)
   if (pinned.length === 0) return
   const { colW, rowH } = gridSize(sizes, spec.diagramType === 'ontology')
   pinned.forEach((n) => {
     const p = pos.get(n.id)
     p.x = (n.at.col - 1) * colW
-    p.y = (n.at.row - 1) * rowH
+    if (n.at.row) p.y = (n.at.row - 1) * rowH
   })
-  const pinnedIds = new Set(pinned.map((n) => n.id))
+  const pinnedIds = new Set(pinned.filter((n) => n.at.row).map((n) => n.id))
   const cross = spec.direction === 'TB' ? 'x' : 'y'
   const overlaps = (id) =>
     spec.nodes.some((o) => {
@@ -108,8 +109,10 @@ function pinToGrid(spec, sizes, pos) {
     .filter((n) => !pinnedIds.has(n.id))
     .forEach((n) => {
       const p = pos.get(n.id)
-      const start = p[cross]
-      for (let k = 1; k <= 80 && overlaps(n.id); k++) p[cross] = start + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 8
+      // A column-only pin keeps its column, so it slides up or down; any other node slides sideways.
+      const axis = n.at && n.at.col ? 'y' : cross
+      const start = p[axis]
+      for (let k = 1; k <= 80 && overlaps(n.id); k++) p[axis] = start + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 8
     })
 }
 
