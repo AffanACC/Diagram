@@ -140,7 +140,14 @@ function Flow() {
     >
       <Background gap={24} size={1.2} color="var(--border)" />
       <Controls showInteractive={false} />
-      <MiniMap pannable zoomable nodeColor="var(--border)" maskColor="rgba(120,130,145,0.15)" />
+      <MiniMap
+        pannable
+        zoomable
+        // Zone boxes are big and would swamp the overview, so only the nodes themselves are drawn.
+        nodeColor={(n) => (n.type === 'zone' ? 'transparent' : 'var(--border)')}
+        nodeStrokeColor="transparent"
+        maskColor="rgba(120,130,145,0.15)"
+      />
       <Panel position="top-left">
         <FileMenu title={spec.title} problems={[...spec.problems, ...layoutProblems]} hasNodes={spec.nodes.length > 0} onNew={newBlank} />
       </Panel>
