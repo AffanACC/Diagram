@@ -88,14 +88,28 @@ export function gridSize(sizes, roomy = false) {
 // grid starts, which places the whole group. Without it the zone stays where the automatic
 // layout put it. `sizes` are the real node sizes (they set the cell size); `lsz` are the sizes
 // used for spacing.
+// Cell size for ontology (circles, roomier) and for ordinary flow nodes, each from its own nodes.
+function gridsFor(spec, sizes) {
+  const of = (net) => {
+    const sub = new Map(spec.nodes.filter((n) => !!n.net === net && sizes.has(n.id)).map((n) => [n.id, sizes.get(n.id)]))
+    return gridSize(sub.size ? sub : sizes, net)
+  }
+  const grids = { flow: of(false), net: of(true) }
+  const pageNet = spec.diagramType === 'ontology'
+  const zoneNet = new Map(spec.zones.map((z) => [z.id, z.net]))
+  // The grid a zone's own cells use (zone = null: the page's).
+  return (zone) => (zone ? zoneNet.get(zone) : pageNet) ? grids.net : grids.flow
+}
+
 function pinToGrid(spec, sizes, lsz, pos) {
   const pinnedNodes = spec.nodes.filter((n) => n.at && n.at.col)
   const placedZones = spec.zones.filter((z) => z.at && z.at.col)
   if (pinnedNodes.length === 0 && placedZones.length === 0) return
-  const { colW, rowH } = gridSize(sizes, spec.diagramType === 'ontology')
+  const gridOf = gridsFor(spec, sizes)
+  const page = gridOf(null)
   const zt = zoneTree(spec)
   const live = new Set(spec.zones.filter((z) => zt.members(z.id).length > 0).map((z) => z.id))
-  const PAGE = { x: -colW / 2, y: -rowH / 2 } // page grid: cell 1,1 is centred on (0,0)
+  const PAGE = { x: -page.colW / 2, y: -page.rowH / 2 } // page grid: cell 1,1 is centred on (0,0)
   const left = (id) => pos.get(id).x - sizes.get(id)[0] / 2
   const top = (id) => pos.get(id).y - sizes.get(id)[1] / 2
 
@@ -108,6 +122,7 @@ function pinToGrid(spec, sizes, lsz, pos) {
     const cur = { x: Math.min(...ids.map(left)), y: Math.min(...ids.map(top)) }
     if (z.at && z.at.col) {
       const base = z.parent && origin.get(z.parent) ? origin.get(z.parent) : PAGE
+      const { colW, rowH } = gridOf(z.parent && origin.get(z.parent) ? z.parent : null)
       const target = { x: base.x + (z.at.col - 1) * colW, y: z.at.row ? base.y + (z.at.row - 1) * rowH : cur.y }
       ids.forEach((id) => {
         pos.get(id).x += target.x - cur.x
@@ -120,6 +135,7 @@ function pinToGrid(spec, sizes, lsz, pos) {
   // 2. Nodes with an `at`: the cell is in the grid of the zone the node is in (else the page's).
   pinnedNodes.forEach((n) => {
     const base = n.zone && origin.get(n.zone) ? origin.get(n.zone) : PAGE
+    const { colW, rowH } = gridOf(n.zone && origin.get(n.zone) ? n.zone : null)
     const p = pos.get(n.id)
     p.x = base.x + (n.at.col - 0.5) * colW
     if (n.at.row) p.y = base.y + (n.at.row - 0.5) * rowH
@@ -155,16 +171,17 @@ function pinToGrid(spec, sizes, lsz, pos) {
 // takes the nearest free half-step cell in its own grid (a cell is taken when another node in
 // the same grid is less than one cell away in both directions).
 // Returns { nodes: Map id -> {col,row}, zones: Map zoneId -> {col,row} }.
-export function snapToGrid(shapeNodes, roomy = false, spec = { zones: [], nodes: [] }) {
+export function snapToGrid(shapeNodes, spec = { zones: [], nodes: [] }) {
   const sizes = new Map(shapeNodes.map((n) => [n.id, [n.data.w, n.data.h]]))
-  const { colW, rowH } = gridSize(sizes, roomy)
+  const gridOf = gridsFor(spec, sizes)
+  const page = gridOf(null)
   const half = (v) => Math.round(v * 2) / 2
   const byId = new Map(shapeNodes.map((n) => [n.id, n]))
   const zt = zoneTree(spec)
   const zoneOf = new Map(spec.nodes.map((n) => [n.id, n.zone]))
   const live = spec.zones.filter((z) => zt.members(z.id).some((id) => byId.has(id)))
   const liveIds = new Set(live.map((z) => z.id))
-  const PAGE = { x: -colW / 2, y: -rowH / 2 }
+  const PAGE = { x: -page.colW / 2, y: -page.rowH / 2 }
   const centre = (id) => {
     const n = byId.get(id)
     return { x: n.position.x + n.data.w / 2, y: n.position.y + n.data.h / 2 }
@@ -175,8 +192,10 @@ export function snapToGrid(shapeNodes, roomy = false, spec = { zones: [], nodes:
   const zoneCell = new Map()
   live.forEach((z) => {
     const cs = zt.members(z.id).filter((id) => byId.has(id)).map(centre)
-    const cur = { x: Math.min(...cs.map((c) => c.x)) - colW / 2, y: Math.min(...cs.map((c) => c.y)) - rowH / 2 }
+    const own = gridOf(z.id)
+    const cur = { x: Math.min(...cs.map((c) => c.x)) - own.colW / 2, y: Math.min(...cs.map((c) => c.y)) - own.rowH / 2 }
     const base = z.parent && origin.get(z.parent) ? origin.get(z.parent) : PAGE
+    const { colW, rowH } = gridOf(z.parent && origin.get(z.parent) ? z.parent : null)
     const col = half((cur.x - base.x) / colW) + 1
     const row = half((cur.y - base.y) / rowH) + 1
     zoneCell.set(z.id, { col, row })
@@ -189,6 +208,7 @@ export function snapToGrid(shapeNodes, roomy = false, spec = { zones: [], nodes:
     const z = zoneOf.get(n.id)
     const scope = z && liveIds.has(z) ? z : '(page)'
     const base = scope === '(page)' ? PAGE : origin.get(scope)
+    const { colW, rowH } = gridOf(scope === '(page)' ? null : scope)
     const c = centre(n.id)
     const col = half((c.x - base.x) / colW + 0.5)
     const row = half((c.y - base.y) / rowH + 0.5)
@@ -218,6 +238,7 @@ export function snapToGrid(shapeNodes, roomy = false, spec = { zones: [], nodes:
   }
   return { nodes: cells, zones: zoneCell }
 }
+
 // Keeps diagrams tidy without anyone choosing sizes: nodes of the same type whose measured
 // sizes are close get the SAME size (the largest in the group, so text is never clipped),
 // and every size is rounded up to an 8px grid. Nodes with an explicit width/height attribute
@@ -606,7 +627,7 @@ function laneLayout(spec, sizes, pos, useManual) {
 // the lane layout always decides positions.
 export function buildGraph(spec, sizes, { useManual = true } = {}) {
   const g = new graphlib.Graph({ compound: true })
-  const net = spec.diagramType === 'ontology' // circles + straight links need more room
+  const net = spec.nodes.some((n) => n.net) // circles + straight links need more room
   g.setGraph({ rankdir: spec.direction, nodesep: net ? 96 : 64, ranksep: net ? 128 : 88, edgesep: 24, marginx: 24, marginy: 24 })
   g.setDefaultEdgeLabel(() => ({}))
   // Zone members are laid out as if larger by the zone padding (once per nesting level), so
@@ -668,11 +689,13 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
     }
   })
 
+  // A link is a straight ontology link when both ends are ontology nodes; otherwise it is routed.
+  const netNode = new Map(spec.nodes.map((n) => [n.id, n.net]))
   const edges = spec.edges.map((e, i) => ({
     id: `e${i}-${e.from}-${e.to}`,
     source: e.from,
     target: e.to,
-    type: net ? 'floating' : 'routed',
+    type: netNode.get(e.from) && netNode.get(e.to) ? 'floating' : 'routed',
     label: e.label,
     markerEnd: { type: 'arrowclosed', width: 18, height: 18 },
     markerStart: e.both ? { type: 'arrowclosed', width: 18, height: 18 } : undefined,
@@ -1087,11 +1110,20 @@ export function routeNetwork(nodes, edges) {
     { id: 's', role: 'source', side: 'right', pct: 0.5 },
     { id: 't', role: 'target', side: 'left', pct: 0.5 },
   ]
-  const outNodes = nodes.map((n) => (n.type === 'shape' ? { ...n, data: { ...n.data, handles } } : n))
+  // Add the link points to the circles that have a link (keeping any points routed edges use).
+  const ends = new Set(edges.flatMap((e) => [e.source, e.target]))
+  const outNodes = nodes.map((n) =>
+    n.type === 'shape' && ends.has(n.id) ? { ...n, data: { ...n.data, handles: [...(n.data.handles || []).filter((h) => h.id !== 's' && h.id !== 't'), ...handles] } } : n,
+  )
   return { nodes: outNodes, edges: outEdges }
 }
 
-// Picks the router for the diagram's type. Used after layout and after a node is dragged.
+// Picks the router per link: ontology links (type 'floating', both ends in ontology zones or an
+// ontology file) are straight lines, every other link is routed at right angles. Used after
+// layout and after a node is dragged.
 export function routeFor(spec, nodes, edges) {
-  return spec.diagramType === 'ontology' ? routeNetwork(nodes, edges) : routeEdges(nodes, edges, spec.direction)
+  const order = new Map(edges.map((e, i) => [e.id, i]))
+  const flow = routeEdges(nodes, edges.filter((e) => e.type !== 'floating'), spec.direction)
+  const net = routeNetwork(flow.nodes, edges.filter((e) => e.type === 'floating'))
+  return { nodes: net.nodes, edges: [...flow.edges, ...net.edges].sort((a, b) => order.get(a.id) - order.get(b.id)) }
 }

@@ -34,6 +34,15 @@ function parseAt(v, who, problems) {
   }
   return { col: Number(m[1]), row: m[2] === undefined ? undefined : Number(m[2]) }
 }
+// <zone type="ontology"> makes that zone an ontology (circles, straight links); type="flow" makes
+// it an ordinary flow even inside an ontology file. Without a type a zone inherits from the zone
+// around it, else from <diagram type>.
+function zoneType(v, id, problems) {
+  if (v === null || v === '') return undefined
+  if (v === 'ontology' || v === 'flow') return v
+  problems.push(`Zone "${id}" has unknown type "${v}" (use ontology or flow)`)
+  return undefined
+}
 const flag = (el, name) => el.hasAttribute(name) && el.getAttribute(name) !== 'false'
 
 // Reads <lane> or <zone> elements: id is optional (made up if missing), label defaults to the id.
@@ -57,6 +66,8 @@ function readGroups(root, tag, problems, fallbackLabel) {
       label: el.getAttribute('label') || (el.getAttribute('id') ? id : fallbackLabel(i)),
       // A zone may carry at="col,row": where its own grid starts (see pinToGrid in layout.js).
       at: tag === 'zone' ? parseAt(el.getAttribute('at'), `Zone "${id}"`, problems) : undefined,
+      // A zone may carry type="ontology" (or "flow" to opt out of an ontology file): see readSpec.
+      own: tag === 'zone' ? zoneType(el.getAttribute('type'), id, problems) : undefined,
       parentEl,
     })
   })
@@ -82,6 +93,16 @@ export function readSpec() {
   if (lanes.length && direction === 'TB') problems.push('Lanes need direction="LR"; they were ignored')
   const { groups: zones, idOf: zoneIdOf } = readGroups(root, 'zone', problems, (i) => `Zone ${i + 1}`)
 
+  // The type that applies per zone: its own, else its parent zone's, else the file's. `net` = ontology.
+  const zoneById = new Map(zones.map((z) => [z.id, z]))
+  const resolve = (zoneId) => {
+    for (let z = zoneById.get(zoneId), n = 0; z && n < 50; z = zoneById.get(z.parent), n++) if (z.own) return z.own === 'ontology'
+    return diagramType === 'ontology'
+  }
+  zones.forEach((z) => (z.net = resolve(z.id)))
+  zones.forEach((z) => delete z.own)
+  const netOf = (zoneId) => (zoneById.has(zoneId) ? zoneById.get(zoneId).net : diagramType === 'ontology')
+
   const seen = new Set()
   const nodes = []
   root.querySelectorAll('node').forEach((el) => {
@@ -90,7 +111,18 @@ export function readSpec() {
     if (seen.has(id)) return problems.push(`Duplicate node id "${id}" was skipped`)
     seen.add(id)
 
-    const rawType = el.getAttribute('type') || (diagramType === 'ontology' ? 'concept' : 'card')
+    // Membership: the nearest <lane> / <zone> around the node, else the lane=/zone= attribute.
+    const laneEl = el.closest('lane')
+    const lane = (laneEl && laneIdOf.get(laneEl)) || el.getAttribute('lane') || undefined
+    if (lane && lanes.length && !lanes.some((l) => l.id === lane)) {
+      problems.push(`Node "${id}" is in unknown lane "${lane}"`)
+    }
+    const zoneEl = el.closest('zone')
+    const zone = (zoneEl && zoneIdOf.get(zoneEl)) || el.getAttribute('zone') || undefined
+    if (zone && !zones.some((z) => z.id === zone)) problems.push(`Node "${id}" is in unknown zone "${zone}"`)
+    const net = netOf(zone)
+
+    const rawType = el.getAttribute('type') || (net ? 'concept' : 'card')
     let type = ALIASES[rawType] || rawType
     if (!TYPES.includes(type)) {
       problems.push(`Node "${id}" has unknown type "${rawType}" (using card)`)
@@ -108,16 +140,6 @@ export function readSpec() {
         kind = 'xor'
       }
     }
-    // Membership: the nearest <lane> / <zone> around the node, else the lane=/zone= attribute.
-    const laneEl = el.closest('lane')
-    const lane = (laneEl && laneIdOf.get(laneEl)) || el.getAttribute('lane') || undefined
-    if (lane && lanes.length && !lanes.some((l) => l.id === lane)) {
-      problems.push(`Node "${id}" is in unknown lane "${lane}"`)
-    }
-    const zoneEl = el.closest('zone')
-    const zone = (zoneEl && zoneIdOf.get(zoneEl)) || el.getAttribute('zone') || undefined
-    if (zone && !zones.some((z) => z.id === zone)) problems.push(`Node "${id}" is in unknown zone "${zone}"`)
-
     let tone = el.getAttribute('tone') || undefined
     if (tone && !TONES.includes(tone)) {
       problems.push(`Node "${id}" has unknown tone "${tone}" (use ${TONES.join(', ')})`)
@@ -131,6 +153,7 @@ export function readSpec() {
       num: el.getAttribute('num') || '',
       lane,
       zone,
+      net,
       assumed: flag(el, 'assumed'),
       html: el.innerHTML.trim(),
       width: num(el.getAttribute('width')),

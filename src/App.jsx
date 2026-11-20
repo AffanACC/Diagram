@@ -97,7 +97,7 @@ function Flow() {
     // Nodes inside a zone get cells in that zone's grid; each zone gets the cell where it starts.
     const cells = spec.lanes.length
       ? { nodes: new Map(), zones: new Map() }
-      : snapToGrid(getNodes().filter((n) => n.type === 'shape'), spec.diagramType === 'ontology', spec)
+      : snapToGrid(getNodes().filter((n) => n.type === 'shape'), spec)
     tpl.content.querySelectorAll('node').forEach((el) => {
       const c = cells.nodes.get(el.getAttribute('id'))
       el.removeAttribute('x')

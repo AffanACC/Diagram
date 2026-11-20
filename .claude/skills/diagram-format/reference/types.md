@@ -36,7 +36,7 @@ Pools and lanes: `pool="..."` on `<diagram>` and `<lane>` elements (see SKILL.md
 | `entity` | none | Bold boxed external entity |
 Every DFD edge needs a `label` naming the data.
 
-## Ontology (`<diagram type="ontology">`)
+## Ontology (`<diagram type="ontology">`, or per zone: `<zone type="ontology">`)
 | type | Use for |
 |---|---|
 | `concept` | A circle with a bold label (default type in an ontology). Put a short example or identifier on a second line with `<small>`. All circles are drawn one size. |
