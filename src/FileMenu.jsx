@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { addFile, currentPath, loadFiles, nameOf, removeFile, sameFile, saveFiles, toFileUrl } from './files.js'
+import { addFile, currentPath, loadFiles, nameOf, onLocalServer, removeFile, sameFile, saveFiles, toFileUrl } from './files.js'
 
-const isHttp = location.protocol === 'http:' || location.protocol === 'https:'
+const isHttp = onLocalServer
 
 // Top-left dropdown: shows the current diagram and lets you switch to another one.
 // - Opened from the local server (http://localhost:47831): lists the diagrams the server has.

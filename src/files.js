@@ -2,6 +2,11 @@
 // localStorage. Diagram content is never stored; clicking a path just opens that file.
 const KEY = 'diagram-files-v1'
 
+// True only on the page opened from the user's own local server (http://localhost:47831). Any
+// other address (a downloaded copy on disk, or a page some other site hosts) is a plain viewing
+// copy: no toolbar, and no request is made to the host serving it.
+export const onLocalServer = ['localhost', '127.0.0.1'].includes(location.hostname) && location.port === '47831'
+
 const clean = (p) => String(p).trim().replace(/^["']+|["']+$/g, '')
 const isFileUrl = (p) => /^file:\/\//i.test(p)
 

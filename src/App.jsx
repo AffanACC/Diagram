@@ -19,6 +19,7 @@ import FileMenu from './FileMenu.jsx'
 import { readSpec } from './spec.js'
 import ZoneNode from './ZoneNode.jsx'
 import FloatingEdge from './FloatingEdge.jsx'
+import { onLocalServer } from './files.js'
 import { measureNodes, buildGraph, routeFor, refreshZones, snapToGrid } from './layout.js'
 
 const nodeTypes = { shape: ShapeNode, lane: LaneNode, zone: ZoneNode }
@@ -26,7 +27,7 @@ const edgeTypes = { routed: RoutedEdge, floating: FloatingEdge }
 
 // "Reset layout" and "Download HTML" are only for the page opened from the local server. A
 // downloaded copy (opened from disk, file://) is just for viewing and sharing, so it has neither.
-const isServed = location.protocol === 'http:' || location.protocol === 'https:'
+const isServed = onLocalServer
 
 function Flow() {
   const [spec, setSpec] = useState(readSpec)

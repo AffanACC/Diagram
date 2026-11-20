@@ -599,6 +599,17 @@ body,
 }
 
 /* ---- React Flow tweaks ---- */
+/* Links keep their thickness however far the diagram is zoomed out. A small pane (a chat
+   preview, say) zooms right out, and a scaled-down 1.6px line would all but vanish. */
+.react-flow__edge-path {
+  vector-effect: non-scaling-stroke;
+}
+/* No room for the minimap in a narrow pane: it would cover the diagram. */
+@media (max-width: 640px) {
+  .react-flow__minimap {
+    display: none;
+  }
+}
 /* Always light, whatever the OS theme: React Flow 13 otherwise follows "light dark". */
 .react-flow {
   color-scheme: light;
