@@ -752,6 +752,48 @@ function laneLayout(spec, sizes, pos, useManual) {
   return { placed, laneNodes, problems }
 }
 
+// One node leading to several nodes that stand in a line (one column in a left-to-right
+// diagram, one row in a top-down one): those nodes get the same size across the flow (width,
+// or height top-down), so their edges all end the same distance from the start and the
+// column / row has one clean edge. Only nodes of one type, with no size set by hand, and the
+// widest keeps its size, so nothing is clipped. Returns a new sizes map.
+function alignFanOuts(spec, sizes, pos) {
+  const horizontal = spec.direction !== 'TB'
+  const along = horizontal ? 'x' : 'y'
+  const dim = horizontal ? 0 : 1
+  const byId = new Map(spec.nodes.map((n) => [n.id, n]))
+  const FIXED = new Set(['connector', 'concept', 'offpage'])
+  const out = new Map(sizes)
+  const targets = new Map()
+  spec.edges.forEach((e) => {
+    if (e.from === e.to || !(pos.get(e.to)[along] > pos.get(e.from)[along])) return
+    if (!targets.has(e.from)) targets.set(e.from, new Set())
+    targets.get(e.from).add(e.to)
+  })
+  targets.forEach((set) => {
+    const ids = [...set].sort((a, b) => pos.get(a)[along] - pos.get(b)[along])
+    let run = []
+    const flush = () => {
+      const nodes = run.map((id) => byId.get(id))
+      if (run.length > 1 && nodes.every((n) => n.type === nodes[0].type && !FIXED.has(n.type) && !n.width && !n.height)) {
+        const v = Math.max(...run.map((id) => out.get(id)[dim]))
+        run.forEach((id) => {
+          const s = [...out.get(id)]
+          s[dim] = v
+          out.set(id, s)
+        })
+      }
+      run = []
+    }
+    ids.forEach((id) => {
+      if (run.length && pos.get(id)[along] - pos.get(run[run.length - 1])[along] > 24) flush()
+      run.push(id)
+    })
+    flush()
+  })
+  return out
+}
+
 // Spec + measured sizes -> React Flow nodes/edges. Positions come from dagre unless a node
 // has x/y (set by "Download HTML" after you drag things) and useManual is true. With lanes,
 // the lane layout always decides positions.
@@ -807,6 +849,7 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
     straighten(spec, lsz, pos)
     if (useManual) pinToGrid(spec, sizes, lsz, pos)
     evictFromZones(spec, sizes, pos)
+    sizes = alignFanOuts(spec, sizes, pos)
   }
 
   const lanes = spec.lanes.length > 0 && spec.nodes.length > 0 ? laneLayout(spec, sizes, pos, useManual) : null
@@ -994,6 +1037,41 @@ export function routeEdges(nodes, edges, dir) {
     return { src, tgt, back, span: Math.abs(dx) + Math.abs(dy), a, b, dx, dy }
   })
 
+  // Edges that leave one node for several nodes in the same column (or that arrive at one node
+  // from several nodes in the same column) all use the same pair of sides, so a fan-out looks
+  // like one thing and a far-off sibling does not suddenly leave from the bottom.
+  const alongFlow = (c) => (hFlow ? c.x : c.y)
+  ;[
+    [(e) => e.source, (p) => p.b],
+    [(e) => e.target, (p) => p.a],
+  ].forEach(([nodeOf, otherEnd]) => {
+    const groups = new Map()
+    edges.forEach((e, i) => {
+      if (picks[i].back) return
+      const k = nodeOf(e)
+      if (!groups.has(k)) groups.set(k, [])
+      groups.get(k).push(i)
+    })
+    groups.forEach((idx) => {
+      const sorted = [...idx].sort((i, j) => alongFlow(otherEnd(picks[i])) - alongFlow(otherEnd(picks[j])))
+      let run = []
+      const flush = () => {
+        if (run.length > 1)
+          run.forEach((i) => {
+            const p = picks[i]
+            ;[p.src, p.tgt] = hFlow ? (p.dx >= 0 ? ['right', 'left'] : ['left', 'right']) : p.dy >= 0 ? ['bottom', 'top'] : ['top', 'bottom']
+            p.lock = true
+          })
+        run = []
+      }
+      sorted.forEach((i) => {
+        if (run.length && alongFlow(otherEnd(picks[i])) - alongFlow(otherEnd(picks[run[run.length - 1]])) > 24) flush()
+        run.push(i)
+      })
+      flush()
+    })
+  })
+
   // Forward edges: try the usual sides first, then others, and keep the one that avoids nodes.
   edges.forEach((e, i) => {
     const p = picks[i]
@@ -1008,10 +1086,14 @@ export function routeEdges(nodes, edges, dir) {
       (o, k, all) => all.findIndex((q) => q[0] === o[0] && q[1] === o[1]) === k,
     )
     let best = null
-    options.forEach(([ss, ts, penalty]) => {
-      const r = search(ss, ts, attach(s, ss, 0.5), attach(t, ts, 0.5), [e.source, e.target], [])
-      if (r && (!best || r.cost + penalty < best.cost)) best = { ss, ts, pl: r.pl, cost: r.cost + penalty }
-    })
+    const tryOptions = (list) =>
+      list.forEach(([ss, ts, penalty]) => {
+        const r = search(ss, ts, attach(s, ss, 0.5), attach(t, ts, 0.5), [e.source, e.target], [])
+        if (r && (!best || r.cost + penalty < best.cost)) best = { ss, ts, pl: r.pl, cost: r.cost + penalty }
+      })
+    // A locked pair (see above) is used as long as it can be routed at all.
+    tryOptions(p.lock ? options.slice(0, 1) : options)
+    if (!best && p.lock) tryOptions(options)
     if (best) {
       p.src = best.ss
       p.tgt = best.ts
