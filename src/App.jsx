@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -20,7 +20,7 @@ import { measureNodes, buildGraph } from './layout.js'
 const nodeTypes = { shape: ShapeNode }
 
 function Flow() {
-  const spec = useMemo(readSpec, [])
+  const [spec, setSpec] = useState(readSpec)
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [sizes, setSizes] = useState(null)
@@ -46,6 +46,19 @@ function Flow() {
       cancelled = true
     }
   }, [spec, setNodes, setEdges, refit])
+
+  useEffect(() => {
+    document.title = spec.title
+  }, [spec.title])
+
+  // "+ New file": swap the page's diagram source for an empty one. Nothing on disk changes;
+  // "Download HTML" then saves it as a new file.
+  const newBlank = useCallback((name) => {
+    const t = (name || '').trim() || 'Untitled diagram'
+    const esc = t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    document.getElementById('diagram-source').innerHTML = `<diagram title="${esc}" direction="LR"></diagram>`
+    setSpec(readSpec())
+  }, [])
 
   const resetLayout = useCallback(() => {
     if (!sizes) return
@@ -100,8 +113,16 @@ function Flow() {
       <Controls showInteractive={false} />
       <MiniMap pannable zoomable nodeColor="var(--border)" maskColor="rgba(120,130,145,0.15)" />
       <Panel position="top-left">
-        <FileMenu title={spec.title} problems={spec.problems} />
+        <FileMenu title={spec.title} problems={spec.problems} hasNodes={spec.nodes.length > 0} onNew={newBlank} />
       </Panel>
+      {spec.nodes.length === 0 && (
+        <Panel position="top-center" style={{ marginTop: '22vh' }}>
+          <div className="blank-hint">
+            <strong>Blank diagram</strong>
+            <span>Press “Download HTML” to save it as a file, then ask Claude to fill it in.</span>
+          </div>
+        </Panel>
+      )}
       <Panel position="top-right">
         <div className="toolbar">
           <button className="btn" onClick={resetLayout} title="Go back to the automatic layout">

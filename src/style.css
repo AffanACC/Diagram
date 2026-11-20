@@ -485,6 +485,28 @@ body,
   box-shadow: none;
   padding: 6px 10px;
 }
+.new-btn.plain {
+  font-weight: 500;
+  color: var(--muted);
+}
+.new-btn.plain:hover {
+  color: var(--text);
+  background: var(--bg);
+}
+.blank-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  pointer-events: none;
+}
+.blank-hint strong {
+  color: var(--text);
+  font-size: 15px;
+}
 .menu-hint {
   margin: 6px 8px 2px;
   color: var(--muted);

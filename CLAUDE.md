@@ -54,13 +54,19 @@ compute coordinates. Only set `x`/`y` on a node if the user asks for a specific 
 - Top left is a dropdown showing the diagram's title. It lists saved diagram files for
   switching between diagrams. It remembers file PATHS only (plus a display name), in the
   browser's localStorage; diagram content is never stored. Clicking a file opens it (a
-  `file:///` link). "+ New file" adds another path: paste a full Windows path (quotes, `/` or
-  `file:///` are fine). When the page was opened from disk and is not listed yet, it shows as
-  "this file" with "Save to list". There is no title card; if `make`-style problems exist
-  (bad edge, unknown type) a small amber "⚠ n" pill appears next to the dropdown. The list is
-  shared only between diagrams opened from disk in the same browser profile. "+ New file" does
-  not create a diagram: new diagrams are created by Claude in `diagrams/`. Do not try to
+  `file:///` link). "Add existing file…" adds another path: paste a full Windows path (quotes,
+  `/` or `file:///` are fine). When the page was opened from disk and is not listed yet, it
+  shows as "this file" with "Save to list". There is no title card; if problems exist (bad
+  edge, unknown type) a small amber "⚠ n" pill appears next to the dropdown. The list is
+  shared only between diagrams opened from disk in the same browser profile. Do not try to
   write this list from `make`.
+- "+ New file" asks for a name and swaps the open page for an empty diagram (in memory only;
+  nothing on disk changes). The user then presses "Download HTML" to get a blank `<name>.html`
+  and later asks Claude to fill it in. To fill a downloaded blank (or to edit any downloaded
+  file): take the `<diagram ...>` element from the `<template id="diagram-source">` in that
+  file, save it as `diagrams/<name>.html`, edit it, and run make. Saved `x`/`y` on nodes are
+  the user's dragged positions: keep them unless asked to re-layout (delete them to re-layout).
+  The user only views and shares; Claude does all the editing.
 
 ## Changing the viewer itself (rare: new frame, new style, new feature)
 Source is `src/` (App.jsx, ShapeNode.jsx, spec.js, layout.js, style.css). Colours are CSS

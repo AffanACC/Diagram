@@ -2,12 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { addFile, currentPath, loadFiles, nameOf, removeFile, sameFile, saveFiles, toFileUrl } from './files.js'
 
 // Top-left dropdown: shows the current diagram, lists your saved diagram files (paths only),
-// and has "+ New file" to add another path. Clicking a file opens it.
-export default function FileMenu({ title, problems }) {
+// "+ New file" starts a blank diagram, "Add existing file" remembers another path.
+export default function FileMenu({ title, problems, hasNodes, onNew }) {
   const [open, setOpen] = useState(false)
   const [showProblems, setShowProblems] = useState(false)
   const [files, setFiles] = useState(loadFiles)
-  const [adding, setAdding] = useState(false)
+  const [mode, setMode] = useState(null) // null | 'new' | 'path'
   const [text, setText] = useState('')
   const [error, setError] = useState('')
   const [canSave, setCanSave] = useState(true)
@@ -16,13 +16,17 @@ export default function FileMenu({ title, problems }) {
   const here = currentPath()
   const hereListed = here && files.some((f) => sameFile(f.path, here))
 
-  const close = useCallback(() => {
-    setOpen(false)
-    setShowProblems(false)
-    setAdding(false)
+  const stopForm = useCallback(() => {
+    setMode(null)
     setText('')
     setError('')
   }, [])
+
+  const close = useCallback(() => {
+    setOpen(false)
+    setShowProblems(false)
+    stopForm()
+  }, [stopForm])
 
   // Close on outside click or Escape; pick up list changes made in another diagram tab.
   useEffect(() => {
@@ -40,20 +44,32 @@ export default function FileMenu({ title, problems }) {
   }, [close])
 
   useEffect(() => {
-    if (adding && inputRef.current) inputRef.current.focus()
-  }, [adding])
+    if (mode && inputRef.current) inputRef.current.focus()
+  }, [mode])
 
   const commit = (next) => {
     setFiles(next)
     setCanSave(saveFiles(next))
   }
 
-  const add = (input) => {
+  const addPath = (input) => {
     const res = addFile(files, input)
     if (res.error) return setError(res.error)
     commit(res.list)
-    setAdding(false)
-    setText('')
+    stopForm()
+  }
+
+  const createBlank = () => {
+    if (hasNodes && !window.confirm('Start a blank diagram? Unsaved layout changes to the open one are lost. The file on disk is not changed.')) {
+      return
+    }
+    onNew(text)
+    close()
+  }
+
+  const openForm = (m) => {
+    setMode(m)
+    setText(m === 'new' ? 'Untitled diagram' : '')
     setError('')
   }
 
@@ -106,7 +122,7 @@ export default function FileMenu({ title, problems }) {
                 </span>
                 <span className="rpath">{here}</span>
               </div>
-              <button className="save" onClick={() => add(here)}>
+              <button className="save" onClick={() => addPath(here)}>
                 Save to list
               </button>
             </div>
@@ -134,17 +150,18 @@ export default function FileMenu({ title, problems }) {
           })}
 
           {files.length === 0 && !(here && !hereListed) ? (
-            <div className="menu-empty">No files yet.</div>
+            <div className="menu-empty">No saved files yet.</div>
           ) : null}
 
           <div className="sep" />
 
-          {adding ? (
+          {mode ? (
             <form
               className="add-row"
               onSubmit={(e) => {
                 e.preventDefault()
-                if (text.trim()) add(text)
+                if (mode === 'new') createBlank()
+                else if (text.trim()) addPath(text)
               }}
             >
               <input
@@ -154,22 +171,32 @@ export default function FileMenu({ title, problems }) {
                   setText(e.target.value)
                   setError('')
                 }}
-                placeholder="Paste the file's full path"
+                placeholder={mode === 'new' ? 'Name of the new diagram' : "Paste the file's full path"}
                 spellCheck={false}
               />
               <button className="btn" type="submit">
-                Add
+                {mode === 'new' ? 'Create' : 'Add'}
               </button>
-              <button className="btn" type="button" onClick={() => (setAdding(false), setText(''), setError(''))}>
+              <button className="btn" type="button" onClick={stopForm}>
                 Cancel
               </button>
             </form>
           ) : (
-            <button className="new-btn" onClick={() => setAdding(true)}>
-              + New file
-            </button>
+            <>
+              <button className="new-btn" onClick={() => openForm('new')}>
+                + New file
+              </button>
+              <button className="new-btn plain" onClick={() => openForm('path')}>
+                Add existing file…
+              </button>
+            </>
           )}
-          {adding && !error ? <div className="menu-hint">Tip: in File Explorer, right-click the file and choose “Copy as path”.</div> : null}
+          {mode === 'path' && !error ? (
+            <div className="menu-hint">Tip: in File Explorer, right-click the file and choose “Copy as path”.</div>
+          ) : null}
+          {mode === 'new' ? (
+            <div className="menu-hint">Starts an empty canvas. Press “Download HTML” to save it as a file.</div>
+          ) : null}
           {error ? <div className="menu-error">{error}</div> : null}
           {!canSave ? <div className="menu-error">This browser would not save the list.</div> : null}
         </div>
