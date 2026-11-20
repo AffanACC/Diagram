@@ -24,6 +24,10 @@ import { measureNodes, buildGraph, routeFor, refreshZones, snapToGrid } from './
 const nodeTypes = { shape: ShapeNode, lane: LaneNode, zone: ZoneNode }
 const edgeTypes = { routed: RoutedEdge, floating: FloatingEdge }
 
+// "Reset layout" and "Download HTML" are only for the page opened from the local server. A
+// downloaded copy (opened from disk, file://) is just for viewing and sharing, so it has neither.
+const isServed = location.protocol === 'http:' || location.protocol === 'https:'
+
 function Flow() {
   const [spec, setSpec] = useState(readSpec)
   const [nodes, setNodes, onNodesChange] = useNodesState([])
@@ -141,12 +145,12 @@ function Flow() {
         <Panel position="top-center" style={{ marginTop: '22vh' }}>
           <div className="blank-hint">
             <strong>Blank diagram</strong>
-            <span>Press “Download HTML” to save it as a file, then ask Claude to fill it in.</span>
+            <span>{isServed ? 'Press “Download HTML” to save it as a file, then ask Claude to fill it in.' : 'Ask Claude to fill it in.'}</span>
           </div>
         </Panel>
       )}
       <Panel position="top-right">
-        <div className="toolbar">
+        <div className="toolbar" style={isServed ? undefined : { display: 'none' }}>
           <button className="btn" onClick={resetLayout} title="Go back to the automatic layout">
             Reset layout
           </button>
