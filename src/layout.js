@@ -1,8 +1,8 @@
 import { graphlib, layout } from '@dagrejs/dagre'
 import { shapeMarkup, OUTSIDE, GLYPH_H } from './shapes.js'
 
-const MAX_W = 300
-const MAX_W_PILL = 320
+const MAX_W = 220
+const MAX_W_PILL = 240
 const MAX_W_OUTSIDE = 150
 const DECISION_W = 220
 const CONNECTOR = 38
@@ -70,6 +70,20 @@ const snap = (v) => Math.ceil(v / GRID) * GRID
 
 // The diagram grid for at="col,row": one cell is the largest node plus breathing room, so any
 // node fits any cell and a grid layout is always evenly spaced.
+const median = (v) => (v.length ? [...v].sort((a, b) => a - b)[Math.floor(v.length / 2)] : 0)
+
+// The empty space between neighbouring cells. Ontologies get roomier gaps (links carry labels
+// that need space between circles); other diagrams get gaps in proportion to the typical node,
+// so small nodes pack tighter.
+function gapsOf(sizes, roomy) {
+  const clamp = (v, lo, hi) => Math.round(Math.min(hi, Math.max(lo, v)))
+  const all = [...sizes.values()]
+  return {
+    gx: roomy ? 150 : clamp(median(all.map((s) => s[0])) * 0.15, 24, 72),
+    gy: roomy ? 110 : clamp(median(all.map((s) => s[1])) * 0.4, 16, 56),
+  }
+}
+
 export function gridSize(sizes, roomy = false) {
   let w = 0
   let h = 0
@@ -77,8 +91,34 @@ export function gridSize(sizes, roomy = false) {
     w = Math.max(w, sw)
     h = Math.max(h, sh)
   })
-  // Ontologies get roomier cells: links carry labels that need space between circles.
-  return { colW: snap(w) + (roomy ? 150 : 72), rowH: snap(h) + (roomy ? 110 : 56) }
+  const { gx, gy } = gapsOf(sizes, roomy)
+  return { colW: snap(w) + gx, rowH: snap(h) + gy }
+}
+
+// Column and row positions for at="col,row": each column is only as wide as the widest node
+// pinned to it and each row only as tall as the tallest one, so one wide node or decision does
+// not stretch everything else. A half step (2.5) is midway between columns 2 and 3. Returns
+// functions giving the centre of a column / row, measured from the left / top edge of column /
+// row 1.
+function makeTracks(items, sizes, roomy) {
+  const { gx, gy } = gapsOf(new Map(items.map((n) => [n.id, sizes.get(n.id)])), roomy)
+  const build = (key, dim, gap) => {
+    const typical = snap(median(items.map((n) => sizes.get(n.id)[dim])))
+    const widest = new Map()
+    items.forEach((n) => {
+      const v = n.at[key]
+      if (v !== undefined && v % 1 === 0) widest.set(v, Math.max(widest.get(v) || 0, sizes.get(n.id)[dim]))
+    })
+    const last = Math.max(1, ...items.map((n) => Math.ceil(n.at[key] || 1))) + 1
+    const size = (c) => (widest.has(c) ? snap(widest.get(c)) : typical)
+    const centre = [0, size(1) / 2]
+    for (let c = 2; c <= last; c++) centre[c] = centre[c - 1] + size(c - 1) / 2 + gap + size(c) / 2
+    return (v) => {
+      const c = Math.floor(v)
+      return v === c ? centre[c] : (centre[c] + centre[c + 1]) / 2
+    }
+  }
+  return { x: build('col', 0, gx), y: build('row', 1, gy) }
 }
 
 // Grid placement. at="col,row" puts a node in that cell; at="col" pins only the column.
@@ -142,13 +182,25 @@ function pinToGrid(spec, sizes, lsz, pos) {
   })
 
   // 2. Nodes with an `at`: the cell is in the grid of the zone the node is in (else the page's).
+  const trackCache = new Map()
+  const tracksFor = (scope) => {
+    const key = scope || ''
+    if (!trackCache.has(key)) {
+      const items = pinnedNodes.filter((n) => (scope ? n.zone === scope : !(n.zone && origin.get(n.zone))))
+      const roomy = scope ? spec.zones.find((z) => z.id === scope).net : spec.diagramType === 'ontology'
+      trackCache.set(key, makeTracks(items, sizes, roomy))
+    }
+    return trackCache.get(key)
+  }
   pinnedNodes.forEach((n) => {
-    const inZone = n.zone && origin.get(n.zone)
-    const base = inZone ? origin.get(n.zone) : PAGE
-    const { colW, rowH } = gridOf(inZone ? n.zone : null)
+    const scope = n.zone && origin.get(n.zone) ? n.zone : null
+    const t = tracksFor(scope)
+    // Zone: column / row 1 starts at the zone's origin. Page: column / row 1 is centred on 0,0.
+    const bx = scope ? origin.get(scope).x : -t.x(1)
+    const by = scope ? origin.get(scope).y : -t.y(1)
     const p = pos.get(n.id)
-    p.x = base.x + (n.at.col - 0.5) * colW
-    if (n.at.row) p.y = base.y + (n.at.row - 0.5) * rowH
+    p.x = bx + t.x(n.at.col)
+    if (n.at.row) p.y = by + t.y(n.at.row)
   })
 
   // 3. Zones with an `at`: sibling zones are laid out as a grid of their own, by order.
