@@ -14,5 +14,9 @@ node scripts/make.mjs diagrams/sample.html   # just one
 
 Open `out/sample.html` by double-clicking it. See `CLAUDE.md` for the source format.
 
+**Files** (top right) is a list for switching between diagrams: it remembers file paths only
+(in the browser, never the diagram content) and opens a path when you click it. Paste a full
+path such as `C:\Users\you\Tools\diagram\out\sample.html`, or press "Add this diagram".
+
 Dragging nodes is for exploring. **Download HTML** (top right) saves a copy of the diagram with
 your current layout baked in; **Reset layout** restores the automatic layout.

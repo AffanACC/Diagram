@@ -13,6 +13,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import './style.css'
 import ShapeNode from './ShapeNode.jsx'
+import FilesPanel from './FilesPanel.jsx'
 import { readSpec } from './spec.js'
 import { measureNodes, buildGraph } from './layout.js'
 
@@ -23,6 +24,7 @@ function Flow() {
   const [nodes, setNodes, onNodesChange] = useNodesState([])
   const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [sizes, setSizes] = useState(null)
+  const [filesOpen, setFilesOpen] = useState(false)
   const { fitView, getNodes } = useReactFlow()
 
   const refit = useCallback(
@@ -112,13 +114,23 @@ function Flow() {
         </div>
       </Panel>
       <Panel position="top-right">
-        <div className="toolbar">
-          <button className="btn" onClick={resetLayout} title="Go back to the automatic layout">
-            Reset layout
-          </button>
-          <button className="btn primary" onClick={downloadHtml} title="Save this diagram as an HTML file, keeping your current layout">
-            Download HTML
-          </button>
+        <div className="toolbar-wrap">
+          <div className="toolbar">
+            <button
+              className={`btn ${filesOpen ? 'active' : ''}`}
+              onClick={() => setFilesOpen((o) => !o)}
+              title="Switch to another diagram"
+            >
+              Files
+            </button>
+            <button className="btn" onClick={resetLayout} title="Go back to the automatic layout">
+              Reset layout
+            </button>
+            <button className="btn primary" onClick={downloadHtml} title="Save this diagram as an HTML file, keeping your current layout">
+              Download HTML
+            </button>
+          </div>
+          {filesOpen ? <FilesPanel /> : null}
         </div>
       </Panel>
     </ReactFlow>

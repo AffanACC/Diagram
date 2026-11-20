@@ -51,6 +51,13 @@ compute coordinates. Only set `x`/`y` on a node if the user asks for a specific 
   positions written back as `x`/`y`, so a layout the user arranged is kept. It downloads
   straight from the browser, no server needed.
 
+- "Files" opens a list of diagram files for switching between diagrams. It remembers file
+  PATHS only (plus a display name), in the browser's localStorage; diagram content is never
+  stored. Clicking a path opens that file (a `file:///` link). Add by pasting a full Windows
+  path (quotes, `/` or `file:///` are fine) or with "Add this diagram" when the page was
+  opened from disk. The list can only be shared between diagrams that are opened from disk
+  in the same browser profile. Do not try to write this list from `make`.
+
 ## Changing the viewer itself (rare: new frame, new style, new feature)
 Source is `src/` (App.jsx, ShapeNode.jsx, spec.js, layout.js, style.css). Colours are CSS
 variables at the top of `src/style.css`. The viewer is always light mode, whatever the OS theme. After editing, rebuild once with
