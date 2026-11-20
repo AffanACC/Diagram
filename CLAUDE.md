@@ -51,12 +51,16 @@ compute coordinates. Only set `x`/`y` on a node if the user asks for a specific 
   positions written back as `x`/`y`, so a layout the user arranged is kept. It downloads
   straight from the browser, no server needed.
 
-- "Files" opens a list of diagram files for switching between diagrams. It remembers file
-  PATHS only (plus a display name), in the browser's localStorage; diagram content is never
-  stored. Clicking a path opens that file (a `file:///` link). Add by pasting a full Windows
-  path (quotes, `/` or `file:///` are fine) or with "Add this diagram" when the page was
-  opened from disk. The list can only be shared between diagrams that are opened from disk
-  in the same browser profile. Do not try to write this list from `make`.
+- Top left is a dropdown showing the diagram's title. It lists saved diagram files for
+  switching between diagrams. It remembers file PATHS only (plus a display name), in the
+  browser's localStorage; diagram content is never stored. Clicking a file opens it (a
+  `file:///` link). "+ New file" adds another path: paste a full Windows path (quotes, `/` or
+  `file:///` are fine). When the page was opened from disk and is not listed yet, it shows as
+  "this file" with "Save to list". There is no title card; if `make`-style problems exist
+  (bad edge, unknown type) a small amber "⚠ n" pill appears next to the dropdown. The list is
+  shared only between diagrams opened from disk in the same browser profile. "+ New file" does
+  not create a diagram: new diagrams are created by Claude in `diagrams/`. Do not try to
+  write this list from `make`.
 
 ## Changing the viewer itself (rare: new frame, new style, new feature)
 Source is `src/` (App.jsx, ShapeNode.jsx, spec.js, layout.js, style.css). Colours are CSS
