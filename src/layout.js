@@ -75,24 +75,25 @@ const median = (v) => (v.length ? [...v].sort((a, b) => a - b)[Math.floor(v.leng
 // The empty space between neighbouring cells. Ontologies get roomier gaps (links carry labels
 // that need space between circles); other diagrams get gaps in proportion to the typical node,
 // so small nodes pack tighter.
-function gapsOf(sizes, roomy) {
+function gapsOf(sizes, roomy, dir = 'LR') {
   const clamp = (v, lo, hi) => Math.round(Math.min(hi, Math.max(lo, v)))
   const all = [...sizes.values()]
-  return {
-    // Never tighter than connectors need to fan out and bend between neighbours.
-    gx: roomy ? 150 : clamp(median(all.map((s) => s[0])) * 0.4, 80, 96),
-    gy: roomy ? 110 : clamp(median(all.map((s) => s[1])) * 0.6, 32, 56),
-  }
+  if (roomy) return { gx: 150, gy: 110 }
+  // Along the flow (columns left to right, or rows top-down) connectors run, fan out and bend, so
+  // the gap is never tighter than they need. Across the flow neighbours only need to be apart.
+  const main = clamp(median(all.map((s) => s[dir === 'TB' ? 1 : 0])) * 0.4, 80, 96)
+  if (dir === 'TB') return { gx: clamp(median(all.map((s) => s[0])) * 0.25, 40, 64), gy: main }
+  return { gx: main, gy: clamp(median(all.map((s) => s[1])) * 0.6, 32, 56) }
 }
 
-export function gridSize(sizes, roomy = false) {
+export function gridSize(sizes, roomy = false, dir = 'LR') {
   let w = 0
   let h = 0
   sizes.forEach(([sw, sh]) => {
     w = Math.max(w, sw)
     h = Math.max(h, sh)
   })
-  const { gx, gy } = gapsOf(sizes, roomy)
+  const { gx, gy } = gapsOf(sizes, roomy, dir)
   return { colW: snap(w) + gx, rowH: snap(h) + gy }
 }
 
@@ -101,10 +102,10 @@ export function gridSize(sizes, roomy = false) {
 // not stretch everything else. A half step (2.5) is midway between columns 2 and 3. Returns
 // functions giving the centre of a column / row, measured from the left / top edge of column /
 // row 1.
-function makeTracks(items, sizes, roomy, statNodes = items) {
+function makeTracks(items, sizes, roomy, statNodes = items, dir = 'LR') {
   // The typical size and the gaps come from ALL the nodes of the scope (`statNodes`), not just the
   // pinned ones, so pinning one more node never moves the nodes that are already pinned.
-  const { gx, gy } = gapsOf(new Map(statNodes.map((n) => [n.id, sizes.get(n.id)])), roomy)
+  const { gx, gy } = gapsOf(new Map(statNodes.map((n) => [n.id, sizes.get(n.id)])), roomy, dir)
   const build = (key, dim, gap) => {
     const typical = snap(median(statNodes.map((n) => sizes.get(n.id)[dim])))
     const widest = new Map()
@@ -113,7 +114,10 @@ function makeTracks(items, sizes, roomy, statNodes = items) {
       if (v !== undefined && v % 1 === 0) widest.set(v, Math.max(widest.get(v) || 0, sizes.get(n.id)[dim]))
     })
     const last = Math.max(1, ...items.map((n) => Math.ceil(n.at[key] || 1))) + 1
-    const size = (c) => (widest.has(c) ? snap(widest.get(c)) : typical)
+    // A column / row nobody is pinned to is only a break in the layout: it costs its two gaps, not a
+    // whole node width. (Only when the neighbours are not half steps hanging off it.)
+    const halfUsed = new Set(items.map((n) => n.at[key]).filter((v) => v !== undefined && v % 1 !== 0).flatMap((v) => [Math.floor(v), Math.ceil(v)]))
+    const size = (c) => (widest.has(c) ? snap(widest.get(c)) : halfUsed.has(c) ? typical : 0)
     const centre = [0, size(1) / 2]
     for (let c = 2; c <= last; c++) centre[c] = centre[c - 1] + size(c - 1) / 2 + gap + size(c) / 2
     return (v) => {
@@ -135,11 +139,17 @@ function makeTracks(items, sizes, roomy, statNodes = items) {
 // layout put them. `sizes` are the real node sizes (they set the cell size); `lsz` are the
 // sizes used for spacing.
 
+// How far a node's box centre sits below the point connectors attach at: zero for most shapes,
+// but for shapes whose label hangs under the symbol the attach point is the symbol's middle.
+function anchorShift(n, sizes) {
+  return OUTSIDE.has(n.type) ? sizes.get(n.id)[1] / 2 - GLYPH_H[n.type] / 2 : 0
+}
+
 // Cell size for ontology (circles, roomier) and for ordinary flow nodes, each from its own nodes.
 function gridsFor(spec, sizes) {
   const of = (net) => {
     const sub = new Map(spec.nodes.filter((n) => !!n.net === net && sizes.has(n.id)).map((n) => [n.id, sizes.get(n.id)]))
-    return gridSize(sub.size ? sub : sizes, net)
+    return gridSize(sub.size ? sub : sizes, net, spec.direction)
   }
   const grids = { flow: of(false), net: of(true) }
   const pageNet = spec.diagramType === 'ontology'
@@ -192,7 +202,7 @@ function pinToGrid(spec, sizes, lsz, pos, locked = new Set()) {
       const items = pinnedNodes.filter((n) => (scope ? n.zone === scope : !(n.zone && origin.get(n.zone))))
       const roomy = scope ? spec.zones.find((z) => z.id === scope).net : spec.diagramType === 'ontology'
       const everyone = spec.nodes.filter((n) => !n.phantom && (scope ? n.zone === scope : !(n.zone && origin.get(n.zone))))
-      trackCache.set(key, makeTracks(items, sizes, roomy, everyone.length ? everyone : items))
+      trackCache.set(key, makeTracks(items, sizes, roomy, everyone.length ? everyone : items, spec.direction))
     }
     return trackCache.get(key)
   }
@@ -204,7 +214,9 @@ function pinToGrid(spec, sizes, lsz, pos, locked = new Set()) {
     const by = scope ? origin.get(scope).y : -t.y(1)
     const p = pos.get(n.id)
     p.x = bx + t.x(n.at.col)
-    if (n.at.row) p.y = by + t.y(n.at.row)
+    // A row is a line the connectors run along: an event or gateway (label under the symbol) is
+    // put so its symbol, not its whole box, sits on that line, level with the cards beside it.
+    if (n.at.row) p.y = by + t.y(n.at.row) + anchorShift(n, sizes)
   })
 
   // 3. Zones with an `at`: sibling zones are laid out as a grid of their own, by order.
@@ -440,14 +452,14 @@ export function cellsForMoved(shapeNodes, spec, initial) {
     // did not move keep their authored cells), sized from all the scope's nodes.
     const keep = nodes.filter((n) => !moved.has(n.id) && n.at && n.at.col)
     const items = [...keep, ...prov]
-    const t = makeTracks(items, sizes, roomy, nodes)
+    const t = makeTracks(items, sizes, roomy, nodes, spec.direction)
     let ox
     let oy
     if (refs.length) {
       // Anchor on a pinned node that did not move: it sits at origin + its own cell.
       const c0 = centre(refs[0].id)
       ox = c0.x - t.x(refs[0].at.col)
-      oy = c0.y - t.y(refs[0].at.row)
+      oy = c0.y - anchorShift(refs[0], sizes) - t.y(refs[0].at.row)
     } else if (!scope) {
       // Page frame: cell 1,1 is centred on 0,0 (see pinToGrid).
       ox = -t.x(1)
@@ -467,7 +479,7 @@ export function cellsForMoved(shapeNodes, spec, initial) {
     }
     mv.forEach((n) => {
       const c = centre(n.id)
-      out.set(n.id, { col: nearest(t.x, c.x - ox, maxCol), row: nearest(t.y, c.y - oy, maxRow) })
+      out.set(n.id, { col: nearest(t.x, c.x - ox, maxCol), row: nearest(t.y, c.y - oy - anchorShift(n, sizes), maxRow) })
     })
   })
   return out
@@ -911,8 +923,8 @@ function compactRanks(spec, sizes, pos, locked = new Set()) {
   const horizontal = spec.direction !== 'TB'
   const m = horizontal ? 'x' : 'y'
   const d = horizontal ? 0 : 1
-  const { gx } = gapsOf(new Map(flow.map((n) => [n.id, sizes.get(n.id)])), false)
-  const gap = horizontal ? gx : Math.max(32, gx - 24)
+  const gaps = gapsOf(new Map(flow.map((n) => [n.id, sizes.get(n.id)])), false, spec.direction)
+  const gap = horizontal ? gaps.gx : gaps.gy // the gap along the flow
   const sorted = [...flow].sort((a, b) => pos.get(a.id)[m] - pos.get(b.id)[m])
   const cols = []
   sorted.forEach((n) => {
@@ -927,7 +939,8 @@ function compactRanks(spec, sizes, pos, locked = new Set()) {
     if (!e.label || !colOf.has(e.from) || !colOf.has(e.to)) return
     const a = colOf.get(e.from)
     const b = colOf.get(e.to)
-    if (b === a + 1) need[b] = Math.max(need[b], e.label.length * 7 + 20 + 2 * 24)
+    // A label sits on the edge: it is as long as the text across a left-to-right flow, one line high top-down.
+    if (b === a + 1) need[b] = Math.max(need[b], (horizontal ? e.label.length * 7 + 20 : 24) + 2 * 24)
   })
   let right = 0
   cols.forEach((c, i) => {

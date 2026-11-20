@@ -28,6 +28,31 @@ export default function RoutedEdge({
     const gap = { [Position.Right]: targetX - sourceX, [Position.Left]: sourceX - targetX, [Position.Bottom]: targetY - sourceY, [Position.Top]: sourceY - targetY }[sourcePosition]
     if (opposite[sourcePosition] === targetPosition && gap > 0) offset = Math.max(4, Math.min(offset, gap / 2 - 1))
   }
+  // A bend of only a few pixels is just a kink. When the two ends are almost level (the edge runs
+  // out of one side into the opposite side), draw a straight line between them instead.
+  const SMALL = 12
+  const opposite = { [Position.Right]: Position.Left, [Position.Left]: Position.Right, [Position.Bottom]: Position.Top, [Position.Top]: Position.Bottom }
+  const along = { [Position.Right]: targetX - sourceX, [Position.Left]: sourceX - targetX, [Position.Bottom]: targetY - sourceY, [Position.Top]: sourceY - targetY }[sourcePosition]
+  const across = horizontal ? Math.abs(targetY - sourceY) : Math.abs(targetX - sourceX)
+  if (opposite[sourcePosition] === targetPosition && along > 0 && across > 0 && across < SMALL) {
+    const m = horizontal ? (sourceY + targetY) / 2 : (sourceX + targetX) / 2
+    const [sx, sy, tx, ty] = horizontal ? [sourceX, m, targetX, m] : [m, sourceY, m, targetY]
+    return (
+      <BaseEdge
+        path={`M ${sx},${sy} L ${tx},${ty}`}
+        labelX={(sx + tx) / 2}
+        labelY={(sy + ty) / 2}
+        label={label}
+        labelStyle={labelStyle}
+        labelShowBg
+        labelBgStyle={labelBgStyle}
+        labelBgPadding={labelBgPadding}
+        labelBgBorderRadius={labelBgBorderRadius}
+        markerEnd={markerEnd}
+        style={style}
+      />
+    )
+  }
   const [path, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
