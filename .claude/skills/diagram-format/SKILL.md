@@ -40,9 +40,18 @@ The one placement tool is `at="col,row"` (see below): use it only when the user 
 - **Older attribute form** (still works, do not write new files this way): `<lane id="a" label="A"></lane>` / `<zone id="z" label="Z"></zone>` followed by `lane="a"` / `zone="z"` on each node.
 - **Skeleton:** `skeleton` on `<diagram>` shows one badge saying the whole diagram is assumed. Use it for a first draft built from a vague prompt instead of marking every node `assumed` (see `diagram-conversation`).
 - **Tone (colour):** `tone="blue"` on any node, from a fixed palette: `grey`, `blue`, `green`, `orange`, `purple`, `red`. There are no other colours and no colour values. Use a tone only to tell categories apart (same tone = same category) or when the user asks for a colour; never for decoration. Say what the tones mean in the reply.
-- **Grid placement (optional):** `at="3,2"` = column 3, row 2 (1-based, from the top left; half steps such as `2.5` put a node between two columns, which is how to offset a row; `at="3"` sets only the column and is what swimlanes use). Cells are evenly spaced and sized by the viewer. Pin nodes only when the user asks for an exact arrangement; give every node in that area an `at`, because unpinned nodes are only nudged out of the way. Nodes without `at` stay fully automatic.
+- **Grid placement (`at`), the way to fix a position (see "When the user wants exact positions"):** `at="3,2"` = column 3, row 2 (1-based, from the top left; half steps such as `2.5` put a node between two columns, which is how to offset a row; `at="3"` sets only the column and is what swimlanes use). Cells are evenly spaced and sized by the viewer. Pin nodes only when the user asks for an exact arrangement; give every node in that area an `at`, because unpinned nodes are only nudged out of the way. Nodes without `at` stay fully automatic.
 - Layout and arrows are automatic: connectors choose their sides, avoid nodes, and avoid crossing each other. Straight runs are kept straight. Do not try to fix a crossing by editing coordinates; change the structure or, if asked, pin with `at`.
 - Mark anything the user did not say with `assumed`. It draws dashed with a small "assumed" tag. Remove it only when the user confirms.
+
+## When the user wants exact positions
+Use the grid, `at="col,row"`. Pixel coordinates do not exist in the source and must never be asked for or invented. Translate their words:
+- "in one line" / "in a row": the same row number, columns 1, 2, 3...
+- "above" / "below": a smaller / larger row number. "Offset" / "between": a half step, e.g. `at="2.5,2"` sits between columns 2 and 3.
+- "left of" / "right of": a smaller / larger column.
+Pin every node in the arrangement they described; unpinned nodes are only nudged out of the way, so anything the user said about placement must be pinned. Leave nodes they said nothing about on automatic layout.
+Layout pasted from another tool (a draw.io file, a sketch, a screenshot): group the nodes by similar vertical position into rows and similar horizontal position into columns, keep their order, put nodes that sit between two columns on a half step, and never copy coordinates. If a position is unclear, ask one question with a guess ("Product between Domain and Source, one row up?").
+A pasted file's content (names, labels) is the user's work: it goes in `diagrams\` (git-ignored), never into the example files that are committed.
 
 ## Node types
 Short list; full table with symbols and rules in [reference/types.md](reference/types.md).

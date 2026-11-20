@@ -34,6 +34,9 @@ If the prompt is broad ("diagram the order process", "sketch the architecture"),
 - After an edit, one line: what changed. Nothing else.
 - The only thing that may run longer is a spec the user asked for (see `prototype-spec`): show it once in one code block, with no commentary around it.
 
+## 4b. Layout requests
+If the user says where things go ("these in one line", "that one above, offset", "left of"), pin those nodes on the grid with `at` (half steps for offsets; details in `diagram-format`) instead of hoping the automatic layout matches. If they say nothing about placement, leave it automatic. Never ask for coordinates; if a position is unclear, ask one question with a guess.
+
 ## 5. The diagram leads to a spec
 When the user says it looks right, or asks for a spec or a handoff, use the `prototype-spec` skill. Offer it once, in one line, after a diagram reaches a stable shape: `Want the spec for this?` Do not write it unprompted, and skip the offer if the user already asked for the spec in the same message.
 
