@@ -172,7 +172,6 @@ export default function FileMenu({ title, problems }) {
           {adding && !error ? <div className="menu-hint">Tip: in File Explorer, right-click the file and choose “Copy as path”.</div> : null}
           {error ? <div className="menu-error">{error}</div> : null}
           {!canSave ? <div className="menu-error">This browser would not save the list.</div> : null}
-          <div className="menu-hint">Saves file paths only, never the diagrams.</div>
         </div>
       )}
     </div>
