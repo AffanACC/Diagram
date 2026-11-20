@@ -10,7 +10,7 @@ const isHttp = onLocalServer
 export default function FileMenu({ title, problems, hasNodes, onNew }) {
   const [open, setOpen] = useState(false)
   const [showProblems, setShowProblems] = useState(false)
-  const [files, setFiles] = useState(loadFiles)
+  const [files, setFiles] = useState(() => (onLocalServer ? loadFiles() : []))
   const [served, setServed] = useState(null) // null = no server list available
   const [mode, setMode] = useState(null) // null | 'new' | 'path'
   const [text, setText] = useState('')
@@ -95,6 +95,23 @@ export default function FileMenu({ title, problems, hasNodes, onNew }) {
 
   const fmt = (iso) =>
     new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+
+  // A shared copy (anywhere but the local server) has no file list: just the title. It reads no
+  // saved paths and asks nobody for a list.
+  if (!onLocalServer) {
+    return (
+      <div className="menu">
+        <div className="menu-bar">
+          <div className="menu-btn static">{title}</div>
+          {problems.length > 0 && (
+            <span className="pill-warn" title={problems.join('\n')}>
+              ⚠ {problems.length}
+            </span>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="menu" ref={ref}>

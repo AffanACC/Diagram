@@ -600,12 +600,12 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
     markerEnd: { type: 'arrowclosed', width: 18, height: 18 },
     markerStart: e.both ? { type: 'arrowclosed', width: 18, height: 18 } : undefined,
     style: {
-      stroke: 'var(--edge)',
+      stroke: 'var(--edge, #94a3b8)',
       strokeWidth: 1.6,
       strokeDasharray: e.dashed || e.assumed ? '6 5' : undefined,
     },
-    labelStyle: { fill: 'var(--text)', fontSize: 12, fontWeight: 600 },
-    labelBgStyle: { fill: 'var(--card)', stroke: 'var(--border)' },
+    labelStyle: { fill: 'var(--text, #0f172a)', fontSize: 12, fontWeight: 600 },
+    labelBgStyle: { fill: 'var(--card, #ffffff)', stroke: 'var(--border, #cbd5e1)' },
     labelBgPadding: [6, 3],
     labelBgBorderRadius: 6,
   }))

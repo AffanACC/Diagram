@@ -61,7 +61,8 @@ const dataobjectSvg =
 
 // Everything inside a node's frame.
 export function shapeMarkup(n) {
-  const text = `<div class="text"><div class="content" style="text-align:${alignFor(n)}">${n.html}</div></div>`
+  // A class, not a style attribute: some hosts (document viewers) forbid inline styles.
+  const text = `<div class="text"><div class="content align-${alignFor(n)}">${n.html}</div></div>`
   switch (n.type) {
     case 'event':
       return `<div class="glyph glyph-${n.kind || 'start'}"></div>${text}`

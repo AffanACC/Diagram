@@ -142,6 +142,17 @@ body,
   pointer-events: none;
 }
 
+/* ---- text alignment inside a node (a class, so no inline style is needed) ---- */
+.align-left {
+  text-align: left;
+}
+.align-center {
+  text-align: center;
+}
+.align-right {
+  text-align: right;
+}
+
 /* ---- the author's HTML inside a node ---- */
 .content {
   font-size: 13.5px;
@@ -683,6 +694,9 @@ body,
 .menu-btn:hover,
 .menu-btn[aria-expanded='true'] {
   border-color: var(--accent);
+}
+.menu-btn.static {
+  cursor: default;
 }
 .menu-title {
   overflow: hidden;
