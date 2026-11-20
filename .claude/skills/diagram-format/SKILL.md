@@ -33,9 +33,11 @@ The one placement tool is `at="col,row"` (see below): use it only when the user 
 </diagram>
 ```
 - `<diagram>`: `title`, `direction` (`LR` default, `TB`), optional `description`, `pool` (name of a swimlane pool).
-- `<node>`: `id` (unique, no spaces), `type` (see below), `kind` (events and gateways), `num` (DFD numbering), `lane` (swimlanes), `assumed` (flag), `at` (grid placement, optional). Content is plain HTML: text, `<h3>`, `<p>`, `<ul>`, `<table>`, `<small>`, `<img src="images/x.png">`.
+- `<node>`: `id` (unique, no spaces), `type` (see below), `kind` (events and gateways), `num` (DFD numbering), `lane` (swimlanes), `zone` (box around a group), `assumed` (flag), `at` (grid placement, optional). Content is plain HTML: text, `<h3>`, `<p>`, `<ul>`, `<table>`, `<small>`, `<img src="images/x.png">`.
 - `<edge>`: `from`, `to`, `label`, `dashed`, `assumed`. Write `<edge ...></edge>`.
 - `<lane id="ops" label="Operations"></lane>` before the nodes, `direction="LR"` only. Every node gets `lane="ops"`. The lane decides the row; steps stay on one row and an attached document or note hangs under its step.
+- **Zones:** `<zone id="intake" label="Intake"></zone>` before the nodes, then `zone="intake"` on the nodes that belong. A zone draws a labelled box around its members (a system boundary on a DFD, a stage, an area, a trust boundary). Nodes that are not members are kept outside the box. Works on any diagram; a node can be in a zone and a lane. If a zone cannot avoid a non-member, a warning pill appears.
+- **Skeleton:** `skeleton` on `<diagram>` shows one badge saying the whole diagram is assumed. Use it for a first draft built from a vague prompt instead of marking every node `assumed` (see `diagram-conversation`).
 - **Grid placement (optional):** `at="3,2"` = column 3, row 2 (1-based, from the top left; `at="3"` sets only the column and is what swimlanes use). Cells are evenly spaced and sized by the viewer. Pin nodes only when the user asks for an exact arrangement; give every node in that area an `at`, because unpinned nodes are only nudged out of the way. Nodes without `at` stay fully automatic.
 - Layout and arrows are automatic: connectors choose their sides, avoid nodes, and avoid crossing each other. Straight runs are kept straight. Do not try to fix a crossing by editing coordinates; change the structure or, if asked, pin with `at`.
 - Mark anything the user did not say with `assumed`. It draws dashed with a small "assumed" tag. Remove it only when the user confirms.
@@ -52,7 +54,7 @@ For conversation rules see `diagram-conversation`; for the pasteable spec see `p
 
 ## After make
 - Read make's output. `⚠` lines are real problems (duplicate id, edge to a missing node, unknown lane). Fix them and re-run. `✗` means it refused the file; fix and re-run.
-- Give the user the URL, not a description of the diagram.
+- Give the user the URL, not a description of the diagram. You do not need to check that the server is up: it reads files on every request. Only if the user says the page does not load, run `Start-ScheduledTask -TaskName DiagramServer`.
 - Editing a diagram the user downloaded: take its `<diagram>` from the `<template id="diagram-source">` in the file, save it under `diagrams\`, edit, make. Saved `at="col,row"` values on nodes are the layout the user arranged by dragging, snapped to the grid; keep them unless asked to re-layout, and delete them all if you change the structure.
 - The generated page contains the source, not coordinates: the layout is computed when it opens (always the same result). "Download HTML" writes the user's current arrangement back as `at` values.
 - The viewer's code and tooling notes are in `C:\Users\affan.hamid\Tools\diagram\CLAUDE.md`. Only touch `src\` when asked.

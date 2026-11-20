@@ -35,7 +35,7 @@ export function readSpec() {
   const tpl = document.getElementById('diagram-source')
   const root = tpl && tpl.content.querySelector('diagram')
   if (!root) {
-    return { title: 'No diagram found', nodes: [], edges: [], lanes: [], problems: ['No <diagram> element found'] }
+    return { title: 'No diagram found', nodes: [], edges: [], lanes: [], zones: [], problems: ['No <diagram> element found'] }
   }
   const direction = root.getAttribute('direction') === 'TB' ? 'TB' : 'LR'
 
@@ -47,6 +47,15 @@ export function readSpec() {
     lanes.push({ id, label: el.getAttribute('label') || id })
   })
   if (lanes.length && direction === 'TB') problems.push('Lanes need direction="LR"; they were ignored')
+
+  // Zones: labelled boxes drawn around a group of nodes (nodes join with zone="id").
+  const zones = []
+  root.querySelectorAll('zone').forEach((el) => {
+    const id = el.getAttribute('id')
+    if (!id) return problems.push('A <zone> has no id and was skipped')
+    if (zones.some((z) => z.id === id)) return problems.push(`Duplicate zone id "${id}" was skipped`)
+    zones.push({ id, label: el.getAttribute('label') || id })
+  })
 
   const seen = new Set()
   const nodes = []
@@ -78,12 +87,15 @@ export function readSpec() {
     if (lane && lanes.length && !lanes.some((l) => l.id === lane)) {
       problems.push(`Node "${id}" is in unknown lane "${lane}"`)
     }
+    const zone = el.getAttribute('zone') || undefined
+    if (zone && !zones.some((z) => z.id === zone)) problems.push(`Node "${id}" is in unknown zone "${zone}"`)
     nodes.push({
       id,
       type,
       kind,
       num: el.getAttribute('num') || '',
       lane,
+      zone,
       assumed: flag(el, 'assumed'),
       html: el.innerHTML.trim(),
       width: num(el.getAttribute('width')),
@@ -113,8 +125,10 @@ export function readSpec() {
     title: root.getAttribute('title') || 'Diagram',
     description: root.getAttribute('description') || '',
     pool: root.getAttribute('pool') || '',
+    skeleton: flag(root, 'skeleton'),
     direction,
     lanes: direction === 'LR' ? lanes : [],
+    zones,
     nodes,
     edges,
     problems,

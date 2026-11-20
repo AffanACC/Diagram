@@ -30,7 +30,7 @@ Use `direction="LR"` with lanes. Defer: event-based, complex and transaction gat
 3. Sequence flow stays inside one pool; message flow connects different pools [convention].
 4. Every node sits in exactly one lane; lanes are roles, teams or systems (nouns), not steps.
 5. Every XOR/OR split has labelled outgoing flows; the gateway text is a question.
-6. A split is closed by a matching join of the same kind (AND with AND, XOR with an XOR merge) [convention].
+6. A parallel (AND) split is closed by an AND join. An XOR split may simply flow into the next task without a merge gateway; do not add one the user did not ask for [convention].
 7. Gateways route only; they do no work.
 8. Tasks are verb + object ("Approve invoice"); events are object + past participle ("Invoice received").
 9. Data objects attach by dashed association, not sequence flow.

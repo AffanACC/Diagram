@@ -17,9 +17,10 @@ import LaneNode from './LaneNode.jsx'
 import RoutedEdge from './RoutedEdge.jsx'
 import FileMenu from './FileMenu.jsx'
 import { readSpec } from './spec.js'
-import { measureNodes, buildGraph, routeEdges, snapToGrid } from './layout.js'
+import ZoneNode from './ZoneNode.jsx'
+import { measureNodes, buildGraph, routeEdges, refreshZones, snapToGrid } from './layout.js'
 
-const nodeTypes = { shape: ShapeNode, lane: LaneNode }
+const nodeTypes = { shape: ShapeNode, lane: LaneNode, zone: ZoneNode }
 const edgeTypes = { routed: RoutedEdge }
 
 function Flow() {
@@ -33,7 +34,7 @@ function Flow() {
   // After dragging a node, re-pick which sides its connections use.
   const onNodeDragStop = useCallback(() => {
     const r = routeEdges(getNodes(), getEdges(), spec.direction)
-    setNodes(r.nodes)
+    setNodes(refreshZones(r.nodes))
     setEdges(r.edges)
   }, [getNodes, getEdges, spec.direction, setNodes, setEdges])
 
@@ -130,6 +131,11 @@ function Flow() {
       <Panel position="top-left">
         <FileMenu title={spec.title} problems={[...spec.problems, ...layoutProblems]} hasNodes={spec.nodes.length > 0} onNew={newBlank} />
       </Panel>
+      {spec.skeleton && (
+        <Panel position="top-center">
+          <div className="skeleton-badge">Skeleton: assumed from a short brief, not confirmed</div>
+        </Panel>
+      )}
       {spec.nodes.length === 0 && (
         <Panel position="top-center" style={{ marginTop: '22vh' }}>
           <div className="blank-hint">

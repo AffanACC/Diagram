@@ -43,5 +43,13 @@ Every DFD edge needs a `label` naming the data.
 | `note` | A dashed annotation |
 | `plain` | Free text or an image with no frame |
 
+## Groupings (not node types)
+| Element | Use |
+|---|---|
+| `<lane id label>` + `lane="id"` | Swimlane rows by role (direction `LR`) |
+| `<zone id label>` + `zone="id"` | A labelled box around a group: system boundary, stage, area, trust boundary |
+| `pool="..."` on `<diagram>` | Pool title strip for swimlanes |
+| `skeleton` on `<diagram>` | Badge: the whole draft is assumed |
+
 ## Flags
 `assumed` on a node or edge: dashed, tagged "assumed". Use for everything the user did not say.

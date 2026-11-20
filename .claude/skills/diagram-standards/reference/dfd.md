@@ -32,5 +32,7 @@ shapes and most error rules are from lecture notes, not a primary standard. Item
 
 ## Authoring tips
 - Use `direction="LR"`.
+- System boundary: put the processes and data stores in a `<zone id="system" label="...">` (`zone="system"` on each) and leave the external entities outside it.
+- Flow labels need not be unique: the same data can travel on several arrows.
 - An entity or store that both sends and receives creates a loop; the viewer routes backward flows over or under the diagram, so keep one node. Only draw a duplicate if the user asks.
 - If a flow goes straight from an entity to a store, add the process that must sit between them and mark it `assumed`.

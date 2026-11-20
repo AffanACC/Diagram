@@ -163,6 +163,89 @@ function harmonize(nodes, sizes) {
   }
 }
 
+// Zones: a labelled box around the nodes that join it (zone="id"). The box is simply the
+// bounding box of its members plus padding; it follows them when they are dragged.
+const ZONE_PAD = 36
+
+export function refreshZones(nodes) {
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  return nodes.map((n) => {
+    if (n.type !== 'zone') return n
+    const ms = n.data.members.map((id) => byId.get(id)).filter(Boolean)
+    if (ms.length === 0) return n
+    const l = Math.min(...ms.map((m) => m.position.x)) - ZONE_PAD
+    const t = Math.min(...ms.map((m) => m.position.y)) - ZONE_PAD
+    const r = Math.max(...ms.map((m) => m.position.x + m.data.w)) + ZONE_PAD
+    const b = Math.max(...ms.map((m) => m.position.y + m.data.h)) + ZONE_PAD
+    return { ...n, position: { x: l, y: t }, data: { ...n.data, w: r - l, h: b - t }, style: { ...n.style, width: r - l, height: b - t } }
+  })
+}
+
+// A node that is not in a zone but landed inside its box (for example an outside party that
+// sits between two members in the flow) is moved just outside it, to whichever side is nearer.
+function evictFromZones(spec, sizes, pos) {
+  const horizontal = spec.direction !== 'TB'
+  const cross = horizontal ? 'y' : 'x'
+  const crossIdx = horizontal ? 1 : 0
+  const rectOf = (id) => {
+    const p = pos.get(id)
+    const [w, h] = sizes.get(id)
+    return { l: p.x - w / 2, r: p.x + w / 2, t: p.y - h / 2, b: p.y + h / 2 }
+  }
+  spec.zones.forEach((z) => {
+    const members = spec.nodes.filter((n) => n.zone === z.id)
+    if (members.length === 0) return
+    const rs = members.map((m) => rectOf(m.id))
+    const L = Math.min(...rs.map((r) => r.l)) - ZONE_PAD
+    const R = Math.max(...rs.map((r) => r.r)) + ZONE_PAD
+    const T = Math.min(...rs.map((r) => r.t)) - ZONE_PAD
+    const B = Math.max(...rs.map((r) => r.b)) + ZONE_PAD
+    spec.nodes
+      .filter((n) => n.zone !== z.id)
+      .forEach((n) => {
+        const r = rectOf(n.id)
+        if (!(r.l < R && L < r.r && r.t < B && T < r.b)) return
+        const p = pos.get(n.id)
+        const half = sizes.get(n.id)[crossIdx] / 2
+        const low = (horizontal ? T : L) - 28 - half
+        const high = (horizontal ? B : R) + 28 + half
+        p[cross] = Math.abs(p[cross] - low) <= Math.abs(p[cross] - high) ? low : high
+      })
+  })
+}
+
+function makeZones(spec, shapeNodes) {
+  const zoneNodes = spec.zones
+    .map((z) => ({ z, members: spec.nodes.filter((n) => n.zone === z.id).map((n) => n.id) }))
+    .filter((x) => x.members.length > 0)
+    .map(({ z, members }) => ({
+      id: `zone:${z.id}`,
+      type: 'zone',
+      position: { x: 0, y: 0 },
+      data: { label: z.label, w: 0, h: 0, members },
+      style: { width: 0, height: 0 },
+      draggable: false,
+      selectable: false,
+      focusable: false,
+      zIndex: -1,
+    }))
+  const sized = refreshZones([...zoneNodes, ...shapeNodes]).filter((n) => n.type === 'zone')
+  // A zone box must not sit on top of a node that is not in it.
+  const problems = []
+  sized.forEach((zn) => {
+    shapeNodes.forEach((n) => {
+      if (zn.data.members.includes(n.id)) return
+      const clash =
+        n.position.x < zn.position.x + zn.data.w &&
+        zn.position.x < n.position.x + n.data.w &&
+        n.position.y < zn.position.y + zn.data.h &&
+        zn.position.y < n.position.y + n.data.h
+      if (clash) problems.push(`Zone "${zn.data.label}" overlaps "${n.id}", which is not in it`)
+    })
+  })
+  return { nodes: sized, problems }
+}
+
 // Straightening: connectors with a bend that serves no purpose are removed by sliding nodes.
 //  1. Where one node leads only to one next node (and that node is fed only by it), slide the
 //     next node so the connector is a straight line. Chains of steps end up in one line.
@@ -381,12 +464,27 @@ function laneLayout(spec, sizes, pos, useManual) {
 // has x/y (set by "Download HTML" after you drag things) and useManual is true. With lanes,
 // the lane layout always decides positions.
 export function buildGraph(spec, sizes, { useManual = true } = {}) {
-  const g = new graphlib.Graph()
+  const g = new graphlib.Graph({ compound: true })
   g.setGraph({ rankdir: spec.direction, nodesep: 64, ranksep: 88, edgesep: 24, marginx: 24, marginy: 24 })
   g.setDefaultEdgeLabel(() => ({}))
+  // Zone members are laid out as if they were larger by the zone's padding, so the box drawn
+  // around them later never lands on a neighbour. Zones are compound parents, which keeps the
+  // members of a zone together.
+  const zoneIds = new Set(spec.zones.map((z) => z.id))
+  const inZone = (n) => n.zone && zoneIds.has(n.zone)
+  const lsz = new Map(
+    spec.nodes.map((n) => {
+      const [w, h] = sizes.get(n.id)
+      return [n.id, inZone(n) ? [w + 2 * ZONE_PAD, h + 2 * ZONE_PAD] : [w, h]]
+    }),
+  )
+  spec.zones.forEach((z) => {
+    if (spec.nodes.some((n) => n.zone === z.id)) g.setNode(z.id, {})
+  })
   spec.nodes.forEach((n) => {
-    const [width, height] = sizes.get(n.id)
+    const [width, height] = lsz.get(n.id)
     g.setNode(n.id, { width, height })
+    if (inZone(n)) g.setParent(n.id, n.zone)
   })
   // Labelled edges reserve room for their label so labels do not land on arrows or nodes.
   spec.edges.forEach((e) =>
@@ -395,8 +493,9 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
   layout(g)
   const pos = new Map(spec.nodes.map((n) => [n.id, g.node(n.id)]))
   if (spec.lanes.length === 0) {
-    straighten(spec, sizes, pos)
-    if (useManual) pinToGrid(spec, sizes, pos)
+    straighten(spec, lsz, pos)
+    if (useManual) pinToGrid(spec, lsz, pos)
+    evictFromZones(spec, sizes, pos)
   }
 
   const lanes = spec.lanes.length > 0 && spec.nodes.length > 0 ? laneLayout(spec, sizes, pos, useManual) : null
@@ -441,9 +540,10 @@ export function buildGraph(spec, sizes, { useManual = true } = {}) {
     labelBgBorderRadius: 6,
   }))
 
-  const all = lanes ? [...lanes.laneNodes, ...shapeNodes] : shapeNodes
+  const zones = makeZones(spec, shapeNodes)
+  const all = [...(lanes ? lanes.laneNodes : []), ...zones.nodes, ...shapeNodes]
   const routed = routeEdges(all, edges, spec.direction)
-  return { nodes: routed.nodes, edges: routed.edges, problems: lanes ? lanes.problems : [] }
+  return { nodes: routed.nodes, edges: routed.edges, problems: [...(lanes ? lanes.problems : []), ...zones.problems] }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -579,26 +679,6 @@ export function routeEdges(nodes, edges, dir) {
     return { src, tgt, back, span: Math.abs(dx) + Math.abs(dy), a, b, dx, dy }
   })
 
-  // Backward edges run as a U over or under the diagram. Two U's whose spans partly overlap
-  // would cross on the same side, so they get opposite sides; nested or separate ones may share.
-  const interval = (p) => (hFlow ? [Math.min(p.a.x, p.b.x), Math.max(p.a.x, p.b.x)] : [Math.min(p.a.y, p.b.y), Math.max(p.a.y, p.b.y)])
-  const partlyOverlap = (p, q) => (p[0] < q[0] && q[0] < p[1] && p[1] < q[1]) || (q[0] < p[0] && p[0] < q[1] && q[1] < p[1])
-  const placedU = []
-  picks
-    .map((p, i) => ({ p, i }))
-    .filter((x) => x.p.back)
-    .sort((x, y) => y.p.span - x.p.span)
-    .forEach(({ p }) => {
-      const iv = interval(p)
-      const meanCross = hFlow ? (p.a.y + p.b.y) / 2 : (p.a.x + p.b.x) / 2
-      const preferred = meanCross > (hFlow ? midY : midX) ? sideNames[1] : sideNames[0]
-      const other = preferred === sideNames[0] ? sideNames[1] : sideNames[0]
-      const clashes = (s) => placedU.filter((q) => q.side === s && partlyOverlap(q.iv, iv)).length
-      const side = clashes(preferred) <= clashes(other) ? preferred : other
-      p.src = p.tgt = side
-      placedU.push({ side, iv })
-    })
-
   // Forward edges: try the usual sides first, then others, and keep the one that avoids nodes.
   edges.forEach((e, i) => {
     const p = picks[i]
@@ -627,12 +707,56 @@ export function routeEdges(nodes, edges, dir) {
     }
   })
 
+  // U's: the longer the span, the further out, so nested ones do not overlap (per side).
+  const offsetOf = new Map()
+  sideNames.forEach((side) => {
+    picks
+      .map((p, i) => ({ p, i }))
+      .filter((x) => x.p.back && x.p.src === side)
+      .sort((x, y) => x.p.span - y.p.span)
+      .forEach((x, rank) => offsetOf.set(x.i, 36 + rank * 18))
+  })
+
+  // Backward edges run as a U over or under the diagram. For each one (longest first) both
+  // sides are tried against the forward routes and the U's already placed, and the side that
+  // crosses fewer nodes and edges wins. Two U's whose spans partly overlap would cross on the
+  // same side, so that counts too; nested or separate U's may share a side.
+  const interval = (p) => (hFlow ? [Math.min(p.a.x, p.b.x), Math.max(p.a.x, p.b.x)] : [Math.min(p.a.y, p.b.y), Math.max(p.a.y, p.b.y)])
+  const partlyOverlap = (p, q) => (p[0] < q[0] && q[0] < p[1] && p[1] < q[1]) || (q[0] < p[0] && p[0] < q[1] && q[1] < p[1])
+  const forwardRoutes = picks.filter((p) => !p.back && p.prov).map((p) => p.prov)
+  const placedU = []
+  picks
+    .map((p, i) => ({ p, i }))
+    .filter((x) => x.p.back)
+    .sort((x, y) => y.p.span - x.p.span)
+    .forEach(({ p, i }) => {
+      const e = edges[i]
+      const iv = interval(p)
+      const meanCross = hFlow ? (p.a.y + p.b.y) / 2 : (p.a.x + p.b.x) / 2
+      const preferred = meanCross > (hFlow ? midY : midX) ? sideNames[1] : sideNames[0]
+      const other = preferred === sideNames[0] ? sideNames[1] : sideNames[0]
+      const costOf = (side) => {
+        const a = attach(byId.get(e.source), side, 0.5)
+        const b = attach(byId.get(e.target), side, 0.5)
+        const O = 36
+        const far = hFlow
+          ? side === 'top' ? Math.min(a.y, b.y) - O : Math.max(a.y, b.y) + O
+          : side === 'left' ? Math.min(a.x, b.x) - O : Math.max(a.x, b.x) + O
+        const pl = hFlow ? [a, { x: a.x, y: far }, { x: b.x, y: far }, b] : [a, { x: far, y: a.y }, { x: far, y: b.y }, b]
+        const clashes = placedU.filter((q) => q.side === side && partlyOverlap(q.iv, iv)).length
+        return collisions(pl, [e.source, e.target]) * 1000 + (crossings(pl, forwardRoutes) + clashes) * 25 + (side === preferred ? 0 : 1)
+      }
+      const side = costOf(preferred) <= costOf(other) ? preferred : other
+      p.src = p.tgt = side
+      placedU.push({ side, iv })
+    })
+
   // --- 2. attachment points along each side -------------------------------------------
   const groups = new Map()
-  const add = (nodeId, side, role, i, other, bend) => {
+  const add = (nodeId, side, role, i, other, bend, off) => {
     const key = `${nodeId}|${side}`
     if (!groups.has(key)) groups.set(key, [])
-    groups.get(key).push({ role, i, other, bend })
+    groups.get(key).push({ role, i, other, bend, off })
   }
   edges.forEach((e, i) => {
     const p = picks[i]
@@ -640,8 +764,8 @@ export function routeEdges(nodes, edges, dir) {
     const t = byId.get(e.target)
     const sb = p.prov && p.prov.length > 2 ? p.prov[1] : null
     const tb = p.prov && p.prov.length > 2 ? p.prov[p.prov.length - 2] : null
-    add(e.source, p.src, 'source', i, centre(t), sb)
-    add(e.target, p.tgt, 'target', i, centre(s), tb)
+    add(e.source, p.src, 'source', i, centre(t), sb, offsetOf.get(i))
+    add(e.target, p.tgt, 'target', i, centre(s), tb, offsetOf.get(i))
   })
   const handles = new Map()
   const handleOf = new Map()
@@ -658,7 +782,9 @@ export function routeEdges(nodes, edges, dir) {
     list.forEach((it) => {
       const d = it.other[along] - me
       it.g = Math.abs(d) <= 2 ? 0 : Math.sign(d)
-      it.dist = it.bend ? Math.abs(it.bend[mainAxis] - here[mainAxis]) : 0
+      // How far out the first bend is. For a looped-back edge that is how deep its U runs, so
+      // two U's meeting one node end side by side without crossing (the deeper one outside).
+      it.dist = it.off !== undefined ? it.off : it.bend ? Math.abs(it.bend[mainAxis] - here[mainAxis]) : 0
     })
     list.sort((p, q) => p.g - q.g || (p.g < 0 ? p.dist - q.dist : p.g > 0 ? q.dist - p.dist : p.other[along] - q.other[along]))
     const ai = list.findIndex((it) => it.g === 0)
@@ -674,15 +800,6 @@ export function routeEdges(nodes, edges, dir) {
   })
 
   // --- 3. bends -------------------------------------------------------------------------
-  // U's: the longer the span, the further out, so nested ones do not overlap (per side).
-  const offsetOf = new Map()
-  sideNames.forEach((side) => {
-    picks
-      .map((p, i) => ({ p, i }))
-      .filter((x) => x.p.back && x.p.src === side)
-      .sort((x, y) => x.p.span - y.p.span)
-      .forEach((x, rank) => offsetOf.set(x.i, 36 + rank * 18))
-  })
   const routed = []
   const bendOf = new Map()
   const endPoints = (i) => {

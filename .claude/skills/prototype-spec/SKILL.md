@@ -10,6 +10,7 @@ last, from the conversation and the final diagram, and nothing else.
 
 ## Rules
 - Every line comes from the conversation or the diagram. Tag each line `[user said]`, `[assumed]` or `[TBD]`. Never fill a gap with your own idea; use `[TBD]`.
+- Tag the substance, not the wording: a label you chose for something the user stated is `[user said]`; anything you inferred, even from what they said, is `[assumed]`.
 - List assumptions first with "Correct these before building."
 - No repo, viewer or tool jargon (no `diagram-format`, no node `type` names). Describe the thing, not how it was drawn.
 - Tool-agnostic: no framework or vendor unless the user named one. If they did not, write `Tech stack: [TBD]`.
